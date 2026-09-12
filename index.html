@@ -85,7 +85,6 @@
     <div id="fillbar-wrap"><div id="fillbar"></div></div>
     <b id="hud-fill">0%</b>
     <div id="hud-icon-btns">
-      <button id="mute-btn" type="button" title="השתק/בטל השתקה">🔊</button>
       <button id="pause-btn" type="button" title="השהיה (Esc)">⏸</button>
     </div>
   </div>
@@ -186,80 +185,6 @@ const POWERUP_DEFS = {
   LIFE:   { color: 0xff6f91, emissive: 0x661127, label: 'חיים',    icon: '❤' }
 };
 const POWERUP_TYPE_KEYS = Object.keys(POWERUP_DEFS);
-
-// ===== SFX (Web Audio API — synthesized, no audio files/libraries) =====
-const SFX = {
-  ctx: null,
-  muted: false,
-  MUTE_KEY: 'xonix3d_muted',
-
-  loadMuted() {
-    try { this.muted = localStorage.getItem(this.MUTE_KEY) === '1'; } catch (e) {}
-  },
-  toggleMute() {
-    this.muted = !this.muted;
-    try { localStorage.setItem(this.MUTE_KEY, this.muted ? '1' : '0'); } catch (e) {}
-    return this.muted;
-  },
-
-  // AudioContext must be created/resumed from a real user gesture (browsers
-  // block autoplay otherwise) — call this from the Start button click / Space keydown.
-  unlock() {
-    if (!this.ctx) {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      this.ctx = new Ctx();
-    }
-    if (this.ctx.state === 'suspended') this.ctx.resume();
-  },
-
-  tone(freq, duration, type, volume, delay) {
-    if (this.muted || !this.ctx) return;
-    const t0 = this.ctx.currentTime + (delay || 0);
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    osc.type = type || 'sine';
-    osc.frequency.setValueAtTime(freq, t0);
-    gain.gain.setValueAtTime(0, t0);
-    gain.gain.linearRampToValueAtTime(volume, t0 + 0.008);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
-    osc.connect(gain).connect(this.ctx.destination);
-    osc.start(t0);
-    osc.stop(t0 + duration + 0.02);
-  },
-
-  sweep(f0, f1, duration, type, volume) {
-    if (this.muted || !this.ctx) return;
-    const t0 = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    osc.type = type || 'sine';
-    osc.frequency.setValueAtTime(f0, t0);
-    osc.frequency.exponentialRampToValueAtTime(f1, t0 + duration);
-    gain.gain.setValueAtTime(volume, t0);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
-    osc.connect(gain).connect(this.ctx.destination);
-    osc.start(t0);
-    osc.stop(t0 + duration + 0.02);
-  },
-
-  tick() { this.tone(880, 0.035, 'square', 0.05); },
-  closeLoop() { this.sweep(220, 720, 0.32, 'sawtooth', 0.14); },
-  death() { this.sweep(200, 55, 0.4, 'square', 0.22); },
-  pickup(type) {
-    const freqs = { SPEED: 880, SHIELD: 660, FREEZE: 990, LIFE: 520 };
-    const f = freqs[type] || 700;
-    this.tone(f, 0.14, 'triangle', 0.18);
-    this.tone(f * 1.5, 0.16, 'triangle', 0.12, 0.05);
-  },
-  levelComplete() {
-    [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.18, 'triangle', 0.16, i * 0.09));
-  },
-  win() {
-    [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(f, 0.26, 'triangle', 0.18, i * 0.11));
-  },
-  pause() { this.tone(440, 0.08, 'sine', 0.1); }
-};
 
 // ===== GRID =====
 const Grid = {
@@ -465,7 +390,6 @@ const Player = {
         this.trailPath.push(i);
         this.trailSet[i] = 1;
         Grid.setState(i, TRAIL);
-        SFX.tick();
       }
       // s === WALL: just keep walking along the wall
     } else {
@@ -473,7 +397,6 @@ const Player = {
         this.trailPath.push(i);
         this.trailSet[i] = 1;
         Grid.setState(i, TRAIL);
-        SFX.tick();
       } else if (s === WALL) {
         Game.closeLoop();
       }
@@ -601,7 +524,6 @@ const PowerUps = {
     for (let i = this.items.length - 1; i >= 0; i--) {
       const it = this.items[i];
       if (it.col === Player.col && it.row === Player.row) {
-        SFX.pickup(it.type);
         Render.spawnBurst(
           Render.cellWorldX(it.col), 1.0, Render.cellWorldZ(it.row),
           POWERUP_DEFS[it.type].color, 26, 3.5, 0.5
@@ -978,9 +900,6 @@ const UI = {
   hidePause() {
     document.getElementById('screen-pause').classList.add('hidden');
   },
-  refreshMuteBtn() {
-    document.getElementById('mute-btn').textContent = SFX.muted ? '🔇' : '🔊';
-  },
   showStart() {
     document.getElementById('name-input').value = Profile.loadName();
     document.getElementById('screen-start').classList.remove('hidden');
@@ -1029,7 +948,6 @@ const Game = {
   },
 
   beginNewGame() {
-    SFX.unlock();
     const name = document.getElementById('name-input').value.trim() || 'שחקן';
     this.username = name;
     Profile.saveName(name);
@@ -1090,7 +1008,6 @@ const Game = {
     Player.onWall = true;
     this.score += newlyClaimed * 10 * this.level;
     UI.refreshHUD();
-    SFX.closeLoop();
     Render.spawnBurst(
       Render.cellWorldX(Player.col), 1.0, Render.cellWorldZ(Player.row),
       0x5be0c4, Math.min(60, 14 + newlyClaimed / 12), 4, 0.55
@@ -1117,7 +1034,6 @@ const Game = {
   },
 
   loseLife() {
-    SFX.death();
     Render.spawnBurst(Render.cellWorldX(Player.col), 1.2, Render.cellWorldZ(Player.row), 0xff5566, 32, 5, 0.5);
     this.lives--;
     for (const i of Player.trailPath) Grid.setState(i, EMPTY);
@@ -1135,7 +1051,6 @@ const Game = {
     this.score += 50 * this.lives + 1000 * this.level;
     UI.refreshHUD();
     UI.showLevelComplete(this.level);
-    if (this.level < CONFIG.MAX_LEVEL) SFX.levelComplete();
     if (this.level >= CONFIG.MAX_LEVEL) {
       setTimeout(() => this.onWin(), 1800);
     } else {
@@ -1165,7 +1080,6 @@ const Game = {
 
   onWin() {
     this.state = 'WIN';
-    SFX.win();
     Profile.recordScore(this.username, this.score, CONFIG.MAX_LEVEL);
     UI.showWin();
   },
@@ -1174,11 +1088,9 @@ const Game = {
     if (this.state === 'PLAYING') {
       this.state = 'PAUSED';
       UI.showPause();
-      SFX.pause();
     } else if (this.state === 'PAUSED') {
       this.state = 'PLAYING';
       UI.hidePause();
-      SFX.pause();
     }
   }
 };
@@ -1217,9 +1129,7 @@ function boot() {
   Player.init();
   Render.init();
   Input.init();
-  SFX.loadMuted();
   UI.showStart();
-  UI.refreshMuteBtn();
 
   document.getElementById('start-btn').addEventListener('click', () => Game.beginNewGame());
   document.getElementById('go-restart-btn').addEventListener('click', () => {
@@ -1231,11 +1141,6 @@ function boot() {
     UI.hideOverlays();
     UI.showStart();
     Game.state = 'START';
-  });
-  document.getElementById('mute-btn').addEventListener('click', () => {
-    SFX.unlock();
-    SFX.toggleMute();
-    UI.refreshMuteBtn();
   });
   document.getElementById('pause-btn').addEventListener('click', () => Game.togglePause());
   document.getElementById('resume-btn').addEventListener('click', () => Game.togglePause());
