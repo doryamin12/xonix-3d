@@ -119,9 +119,19 @@
   </div>
 </div>
 
-<script src="https://unpkg.com/three@0.149.0/build/three.min.js"></script>
-<script>
-'use strict';
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.149.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // ===== CONFIG =====
 const CONFIG = {
@@ -514,6 +524,9 @@ const Render = {
 
     // Cells touch edge-to-edge (no inset gap) so same-state neighbors merge into
     // one continuous smooth surface instead of a grid of visibly separate squares.
+    // (Tried RoundedBoxGeometry here for a beveled look, but its bevel normals
+    // create a faint seam at every cell boundary — a plain sharp-edged box is
+    // what actually reads as one continuous surface.)
     const geo = new THREE.BoxGeometry(CONFIG.CELL, 1, CONFIG.CELL);
     // InstancedMesh color needs a per-vertex base "color" attribute (white) to multiply against;
     // without it vColor defaults to black and instance colors render as black regardless of value.
@@ -536,6 +549,16 @@ const Render = {
     this.scene.add(this.playerMesh);
 
     this.powerupGeo = new THREE.OctahedronGeometry(0.42, 0);
+
+    // Bloom post-processing: makes the ship, balls, power-ups and trail read as
+    // glowing/neon (arcade look) without affecting the flatter-lit floor/walls,
+    // since UnrealBloomPass only blooms pixels above its brightness threshold.
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight), 2.0, 0.6, 0.6
+    );
+    this.composer.addPass(this.bloomPass);
 
     window.addEventListener('resize', () => this.onResize());
   },
@@ -571,6 +594,8 @@ const Render = {
     this.fitCameraToBoard();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.composer.setSize(window.innerWidth, window.innerHeight);
+    this.bloomPass.resolution.set(window.innerWidth, window.innerHeight);
   },
 
   updateInstance(i) {
@@ -664,7 +689,7 @@ const Render = {
   },
 
   render() {
-    this.renderer.render(this.scene, this.camera);
+    this.composer.render();
   }
 };
 
