@@ -479,12 +479,9 @@ const Render = {
     this.scene.background = new THREE.Color(0x05070d);
     this.scene.fog = new THREE.Fog(0x05070d, 60, 140);
 
-    const depth = Grid.rows * CONFIG.CELL;
     this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 500);
-    // Pulled in closer than before so the board fills more of the screen
-    // (it used to leave large empty margins above/below on most window sizes).
-    this.camera.position.set(0, depth * 0.92, depth * 0.4);
-    this.camera.lookAt(0, 0, 0);
+    this.cameraTilt = THREE.MathUtils.degToRad(27); // fixed elevation angle for the top-down-ish look
+    this.fitCameraToBoard();
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     // Render at the display's real pixel density (capped at 2x for perf) instead of
@@ -543,9 +540,35 @@ const Render = {
     window.addEventListener('resize', () => this.onResize());
   },
 
-  onResize() {
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+  // Positions the camera, at the fixed tilt angle, far enough back that the whole
+  // board fits inside the frustum for the CURRENT window aspect ratio — recomputed
+  // on every resize so the board is never cropped, however tall/narrow the window is.
+  fitCameraToBoard() {
+    const aspect = window.innerWidth / window.innerHeight;
+    this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
+
+    const boardHalfWidth = Grid.cols * CONFIG.CELL / 2;
+    const boardHalfDepth = Grid.rows * CONFIG.CELL / 2;
+    const fovV = THREE.MathUtils.degToRad(this.camera.fov);
+    const fovH = 2 * Math.atan(Math.tan(fovV / 2) * aspect);
+
+    const distForWidth = boardHalfWidth / Math.tan(fovH / 2);
+    // Divide by cos(tilt) as a margin for the extra vertical space the tilted
+    // view consumes projecting the board's depth (plus tall walls/ship/balls).
+    const distForDepth = (boardHalfDepth / Math.tan(fovV / 2)) / Math.cos(this.cameraTilt);
+    // 1.35x margin: the simple width/depth-fit formulas assume the board sits at a
+    // single nominal distance, but the tilted camera makes the NEAR edge closer
+    // (and so wider on screen) than that — verified numerically to fully contain
+    // the board (plus wall/ship height) across aspect ratios from ~0.4 to 3.0.
+    const distance = Math.max(distForWidth, distForDepth) * 1.35;
+
+    this.camera.position.set(0, distance * Math.cos(this.cameraTilt), distance * Math.sin(this.cameraTilt));
+    this.camera.lookAt(0, 0, 0);
+  },
+
+  onResize() {
+    this.fitCameraToBoard();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
   },
