@@ -215,6 +215,8 @@ const Input = {
   },
   init() {
     window.addEventListener('keydown', (e) => {
+      const tag = document.activeElement && document.activeElement.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return; // let typing (incl. WASD/space) reach text fields normally
       if (this._map[e.code]) {
         this.requestedDirection = this._map[e.code];
         e.preventDefault();
