@@ -4,138 +4,766 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Xonix 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Rubik:wght@400;500;700;800&display=swap" rel="stylesheet">
 <style>
+  :root {
+    --bg: #05070d;
+    --ink: #eef2ff;
+    --ink-dim: #b9c2de;
+    --muted: #7f8bb3;
+    --wall: #3b6fd6;
+    --trail: #ffb020;
+    --accent: #5be0c4;
+    --amber: #ffd166;
+    --enemy: #ff4d5e;
+    --glass: rgba(10, 15, 29, 0.76);
+    --line: rgba(120, 160, 255, 0.16);
+    --line-strong: rgba(120, 160, 255, 0.3);
+    --font-ui: "Rubik", "Segoe UI", "Arial Hebrew", Arial, sans-serif;
+    --font-display: "Orbitron", "Rubik", "Segoe UI", Arial, sans-serif;
+    --r-lg: 20px;
+    --r-md: 12px;
+    --r-pill: 999px;
+    --ease-out: cubic-bezier(.2, .8, .2, 1);
+    --ease-back: cubic-bezier(.34, 1.56, .64, 1);
+  }
+
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
-    background: #05070d; font-family: "Segoe UI", Arial, sans-serif; color: #eef2ff;
+    background: var(--bg); font-family: var(--font-ui); color: var(--ink);
+    -webkit-font-smoothing: antialiased;
   }
   canvas { display: block; }
+  button, input { font-family: inherit; }
+  .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+  .num { font-family: var(--font-display); font-variant-numeric: tabular-nums; }
 
+  /* Screens use an opacity/visibility pattern (see .screen.hidden); everything else still collapses. */
+  .hidden:not(.screen) { display: none !important; }
+
+  :focus { outline: none; }
+  :focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+
+  /* ================= HUD ================= */
   #hud {
     position: fixed; top: 0; left: 0; right: 0; z-index: 10;
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 10px 18px; pointer-events: none;
-    background: linear-gradient(to bottom, rgba(5,7,13,0.85), rgba(5,7,13,0));
-    font-size: 15px; letter-spacing: 0.5px;
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 10px;
+    padding: 12px 16px 28px;
+    pointer-events: none;
+    background: linear-gradient(to bottom, rgba(5,7,13,0.8), rgba(5,7,13,0));
+    font-size: 14px;
+    transition: opacity .4s var(--ease-out), transform .4s var(--ease-out);
   }
-  #hud .group { display: flex; gap: 18px; }
-  #hud .item b { color: #ffd166; }
-  #hud #fillbar-wrap {
-    width: 160px; height: 10px; background: #1c2333; border-radius: 6px; overflow: hidden;
-    border: 1px solid #333c55;
+  body:has(#screen-start:not(.hidden)) #hud { opacity: 0; transform: translateY(-14px); }
+
+  #hud .group { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+
+  .chip {
+    position: relative; display: inline-flex; align-items: center; gap: 7px;
+    height: 34px; padding: 0 12px; border-radius: var(--r-pill);
+    background: var(--glass); border: 1px solid var(--line);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 18px rgba(0,0,0,0.35);
+    white-space: nowrap;
   }
-  #hud #fillbar { height: 100%; width: 0%; background: linear-gradient(90deg,#3b6fd6,#5be0c4); transition: width .15s; }
-  #hud #fillrow { display:flex; align-items:center; gap:8px; }
-  #hud-effects { display: flex; gap: 8px; }
-  #hud-effects .fx {
-    display: flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px;
-    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); font-size: 13px;
+  .chip .ico { width: 16px; height: 16px; flex: none; fill: var(--accent); filter: drop-shadow(0 0 4px rgba(91,224,196,.55)); }
+  .chip-label { color: var(--muted); font-size: 12px; font-weight: 500; }
+  .chip b { color: var(--amber); font-weight: 700; }
+
+  #hud-name { color: var(--ink); font-weight: 500; max-width: 12ch; overflow: hidden; text-overflow: ellipsis; }
+
+  .chip-score .ico { fill: var(--amber); filter: drop-shadow(0 0 4px rgba(255,209,102,.6)); }
+  #hud-score {
+    font-family: var(--font-display); font-size: 15px; min-width: 3ch;
+    font-variant-numeric: tabular-nums; text-shadow: 0 0 10px rgba(255,209,102,.45);
   }
+  .chip.bump { animation: chipBump .45s var(--ease-back); }
+  @keyframes chipBump { 0% { transform: scale(1); } 35% { transform: scale(1.12); } 100% { transform: scale(1); } }
+
+  .hearts { display: inline-flex; align-items: center; gap: 3px; }
+  .heart {
+    width: 17px; height: 17px; fill: var(--enemy);
+    filter: drop-shadow(0 0 5px rgba(255,77,94,.7));
+    transition: transform .3s var(--ease-back), fill .3s;
+  }
+  .heart.off { fill: rgba(255,255,255,0.13); filter: none; transform: scale(.82); }
+  .heart.gain { animation: heartGain .55s var(--ease-back); }
+  @keyframes heartGain { 0% { transform: scale(.2); } 60% { transform: scale(1.4); } 100% { transform: scale(1); } }
+  .lives-extra { font-family: var(--font-display); font-size: 13px; color: var(--ink); }
+  .chip.hit { animation: chipHit .5s ease; }
+  @keyframes chipHit {
+    0%, 100% { transform: translateX(0); border-color: var(--line); }
+    15% { border-color: rgba(255,77,94,.85); box-shadow: 0 0 18px rgba(255,77,94,.5); }
+    20% { transform: translateX(-4px); }
+    40% { transform: translateX(4px); }
+    60% { transform: translateX(-3px); }
+    80% { transform: translateX(2px); }
+  }
+
+  .chip-level { overflow: hidden; }
+  .lvl-num { display: inline-flex; align-items: baseline; gap: 1px; }
+  #hud-level { font-family: var(--font-display); font-size: 15px; }
+  .lvl-num .sep, #hud-maxlevel { font-family: var(--font-display); font-size: 11px; color: var(--muted); }
+  .lvl-track {
+    position: absolute; inset-inline: 12px; bottom: 3px; height: 2px; border-radius: 2px;
+    background: rgba(255,255,255,0.08); overflow: hidden;
+  }
+  .lvl-track::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(to left, var(--wall), var(--accent));
+    transform-origin: right center; transform: scaleX(var(--lvl, .05));
+    transition: transform .6s var(--ease-out);
+  }
+
+  /* Power-up effect chips */
+  #hud-effects { display: flex; flex-wrap: wrap; gap: 6px; }
+  #hud-effects:empty { display: none; }
+  .fx {
+    --c: #5be0c4; --c-rgb: 91,224,196; --p: 1;
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 34px; padding-inline: 4px 10px; border-radius: var(--r-pill);
+    background: var(--glass);
+    border: 1px solid rgba(var(--c-rgb), .45);
+    box-shadow: 0 0 14px rgba(var(--c-rgb), .22), inset 0 0 12px rgba(var(--c-rgb), .08);
+    animation: fxIn .35s var(--ease-back);
+  }
+  .fx-speed  { --c: #5be0c4; --c-rgb: 91,224,196; }
+  .fx-shield { --c: #66aaff; --c-rgb: 102,170,255; }
+  .fx-freeze { --c: #bfe9ff; --c-rgb: 191,233,255; }
+  .fx-ring {
+    position: relative; width: 26px; height: 26px; border-radius: 50%;
+    display: grid; place-items: center; flex: none;
+    background: conic-gradient(var(--c) calc(var(--p) * 360deg), rgba(255,255,255,0.1) 0);
+  }
+  .fx-ring::before { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: #0a1122; }
+  .fx-ico { position: relative; font-size: 13px; line-height: 1; }
+  .fx-label { font-size: 12px; color: var(--ink-dim); }
+  .fx-time {
+    font-family: var(--font-display); font-size: 13px; color: var(--c);
+    min-width: 1.6ch; text-align: center; text-shadow: 0 0 8px rgba(var(--c-rgb), .6);
+  }
+  .fx.bump { animation: chipBump .45s var(--ease-back); }
+  .fx.ending { animation: fxBlink .5s ease-in-out infinite alternate; }
+  @keyframes fxIn { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
+  @keyframes fxBlink { from { opacity: 1; } to { opacity: .45; } }
+
+  /* Fill bar */
+  #fillrow { gap: 9px; padding-inline: 12px 4px; margin-inline-start: auto; }
+  #fillbar-wrap {
+    position: relative; width: clamp(110px, 16vw, 220px); height: 10px; border-radius: var(--r-pill);
+    background: rgba(22,28,44,0.95); border: 1px solid rgba(120,160,255,0.22);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.6);
+  }
+  #fillbar {
+    position: relative; height: 100%; width: 0%; border-radius: inherit; overflow: hidden;
+    background: linear-gradient(to left, var(--wall), var(--accent));
+    box-shadow: 0 0 10px rgba(91,224,196,.5);
+    transition: width .5s var(--ease-out);
+  }
+  #fillbar::after {
+    content: ""; position: absolute; top: 0; bottom: 0; right: -40%; width: 40%;
+    background: linear-gradient(to left, transparent, rgba(255,255,255,.55), transparent);
+    animation: shimmer 2.4s ease-in-out infinite;
+  }
+  @keyframes shimmer { from { transform: translateX(0); } to { transform: translateX(-350%); } }
+  .fill-target {
+    position: absolute; top: -5px; bottom: -5px; inset-inline-start: var(--target, 80%);
+    width: 2px; margin-inline-start: -1px; border-radius: 2px;
+    background: var(--amber); box-shadow: 0 0 6px var(--amber); opacity: .85;
+  }
+  #fillrow.near .fill-target { animation: targetPulse .8s ease-in-out infinite alternate; }
+  #fillrow.reached #fillbar { background: linear-gradient(to left, var(--trail), var(--amber)); box-shadow: 0 0 14px rgba(255,209,102,.7); }
+  @keyframes targetPulse { from { opacity: .5; } to { opacity: 1; box-shadow: 0 0 14px var(--amber), 0 0 4px #fff; } }
+  .fill-num { display: inline-flex; align-items: baseline; gap: 1px; }
+  #hud-fill { font-family: var(--font-display); font-size: 15px; min-width: 3.2ch; text-align: right; }
+  .fill-goal { font-family: var(--font-display); font-size: 10px; color: var(--muted); }
+
   #hud-icon-btns { display: flex; gap: 6px; pointer-events: auto; }
   #hud-icon-btns button {
-    width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15);
-    background: rgba(255,255,255,0.08); color: #eef2ff; font-size: 15px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; padding: 0; border-radius: 50%;
+    border: 1px solid var(--line-strong); background: rgba(255,255,255,0.06); color: var(--ink);
+    display: grid; place-items: center; cursor: pointer;
+    transition: background .2s, border-color .2s, box-shadow .2s, transform .12s;
   }
-  #hud-icon-btns button:hover { background: rgba(255,255,255,0.16); }
+  #hud-icon-btns button svg { width: 14px; height: 14px; fill: currentColor; }
+  #hud-icon-btns button:hover { background: rgba(91,224,196,.14); border-color: var(--accent); box-shadow: 0 0 12px rgba(91,224,196,.4); }
+  #hud-icon-btns button:active { transform: scale(.9); }
 
+  /* In-game controls hint: appears when the start screen closes, fades by itself */
+  #controls-hint {
+    position: fixed; z-index: 9; bottom: 16px; inset-inline: 0; margin-inline: auto;
+    width: max-content; max-width: calc(100% - 32px);
+    display: none; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 10px;
+    padding: 8px 14px; border-radius: var(--r-pill);
+    background: var(--glass); border: 1px solid var(--line);
+    font-size: 12px; color: var(--ink-dim); pointer-events: none; opacity: 0;
+  }
+  body:has(#screen-start.hidden) #controls-hint { display: flex; animation: hintLife 6s ease both; }
+  #controls-hint .dot-sep { color: var(--muted); }
+  @keyframes hintLife {
+    0% { opacity: 0; transform: translateY(10px); }
+    8% { opacity: 1; transform: none; }
+    80% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  /* ================= SCREENS ================= */
   .screen {
-    position: fixed; inset: 0; z-index: 20;
-    display: flex; align-items: center; justify-content: center;
-    background: rgba(3,5,10,0.82);
+    position: fixed; inset: 0; z-index: 20; overflow: hidden;
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+    background: radial-gradient(ellipse at 50% 40%, rgba(12,22,48,0.55), rgba(3,5,10,0.9) 70%);
+    opacity: 1; visibility: visible;
+    transition: opacity .32s var(--ease-out), visibility 0s linear 0s;
   }
-  .hidden { display: none !important; }
+  .screen.hidden {
+    opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity .24s ease-in, visibility 0s linear .24s;
+  }
+  .screen-danger { background: radial-gradient(ellipse at 50% 40%, rgba(70,10,22,0.5), rgba(3,5,10,0.92) 70%); }
+  .screen-celebrate { background: radial-gradient(circle at 50% 48%, rgba(255,209,102,0.14), rgba(3,5,10,0.55) 60%); }
+  .screen-win { background: radial-gradient(ellipse at 50% 40%, rgba(60,44,8,0.5), rgba(3,5,10,0.92) 70%); }
+
   .panel {
-    background: #10141f; border: 1px solid #2a3352; border-radius: 14px;
-    padding: 32px 40px; max-width: 92vw; width: 420px; text-align: center;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    position: relative; z-index: 1;
+    width: min(440px, 100%); max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px);
+    overflow-y: auto; overscroll-behavior: contain;
+    scrollbar-width: thin; scrollbar-color: rgba(120,160,255,.3) transparent;
+    padding: 30px 30px 26px; text-align: center; border-radius: var(--r-lg);
+    background: linear-gradient(160deg, rgba(20,30,58,0.8), rgba(8,12,24,0.88));
+    border: 1px solid rgba(120,160,255,0.22);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.08),
+      0 24px 60px rgba(0,0,0,0.55),
+      0 0 42px rgba(59,111,214,0.2);
+    -webkit-backdrop-filter: blur(10px) saturate(1.2);
+    backdrop-filter: blur(10px) saturate(1.2);
+    transform: translateY(10px) scale(.97);
+    transition: transform .24s ease-in;
   }
-  .panel h1 { margin: 0 0 6px; font-size: 26px; color: #ffd166; }
-  .panel h2 { margin: 0 0 14px; font-size: 20px; color: #5be0c4; }
-  .panel p { margin: 6px 0; font-size: 14px; color: #b9c2de; line-height: 1.6; }
+  .panel::before {
+    content: ""; position: absolute; top: 0; inset-inline: 28px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--edge, var(--accent)), transparent);
+    box-shadow: 0 0 12px var(--edge, var(--accent));
+  }
+  .screen:not(.hidden) .panel { transform: none; animation: panelIn .5s var(--ease-back) both; }
+  @keyframes panelIn { from { opacity: 0; transform: translateY(18px) scale(.94); } to { opacity: 1; transform: none; } }
+
+  .screen:not(.hidden) .panel > * { animation: rise .45s var(--ease-out) both; }
+  .screen:not(.hidden) .panel > :nth-child(2) { animation-delay: .04s; }
+  .screen:not(.hidden) .panel > :nth-child(3) { animation-delay: .08s; }
+  .screen:not(.hidden) .panel > :nth-child(4) { animation-delay: .12s; }
+  .screen:not(.hidden) .panel > :nth-child(5) { animation-delay: .16s; }
+  .screen:not(.hidden) .panel > :nth-child(6) { animation-delay: .2s; }
+  .screen:not(.hidden) .panel > :nth-child(7) { animation-delay: .24s; }
+  .screen:not(.hidden) .panel > :nth-child(8) { animation-delay: .28s; }
+  .screen:not(.hidden) .panel > :nth-child(n+9) { animation-delay: .32s; }
+  @keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  .panel h1 { margin: 0 0 6px; font-size: 28px; font-weight: 800; color: var(--amber); }
+  .panel h2 { margin: 0 0 10px; font-size: 22px; font-weight: 800; color: var(--accent); }
+  .panel p { margin: 6px 0; font-size: 14px; color: var(--ink-dim); line-height: 1.6; }
+  .panel p b { color: var(--amber); }
+
+  /* Start screen */
+  .panel-start { width: min(500px, 100%); padding-top: 34px; }
+  .logo { display: flex; justify-content: center; align-items: flex-start; gap: 10px; margin: 0; direction: ltr; line-height: 1; }
+  .logo-word {
+    font-family: var(--font-display); font-weight: 900; font-size: clamp(40px, 12vw, 60px); letter-spacing: .08em;
+    background: linear-gradient(100deg, #5be0c4 0%, #3b6fd6 25%, #5be0c4 45%, #ffd166 62%, #ffb020 76%, #5be0c4 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 16px rgba(91,224,196,.35));
+  }
+  .screen:not(.hidden) .logo-word { animation: logoFlow 7s linear infinite; }
+  @keyframes logoFlow { from { background-position: 0% 0; } to { background-position: 200% 0; } }
+  .logo-3d {
+    margin-top: 4px; padding: 5px 8px; border-radius: 8px;
+    font-family: var(--font-display); font-weight: 900; font-size: clamp(14px, 3.6vw, 18px);
+    color: #1b1200; background: linear-gradient(135deg, #ffd166, #ffb020);
+    box-shadow: 0 0 18px rgba(255,176,32,.55); transform: rotate(-6deg);
+  }
+  .tagline { margin: 12px 0 18px !important; font-size: 15px !important; font-weight: 700; letter-spacing: .06em; color: var(--accent) !important; }
+
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; counter-reset: step; }
+  .steps li {
+    padding: 12px 8px 10px; border-radius: var(--r-md);
+    background: rgba(255,255,255,0.035); border: 1px solid var(--line);
+    font-size: 12.5px; line-height: 1.45; color: var(--ink-dim);
+  }
+  .steps li::before {
+    counter-increment: step; content: counter(step);
+    display: grid; place-items: center; width: 22px; height: 22px; margin: 0 auto 6px; border-radius: 50%;
+    font-family: var(--font-display); font-size: 11px; font-weight: 900; color: #04101c;
+    background: var(--accent); box-shadow: 0 0 10px rgba(91,224,196,.5);
+  }
+  .steps li:nth-child(2)::before { background: var(--trail); box-shadow: 0 0 10px rgba(255,176,32,.5); }
+  .steps li:nth-child(3)::before { background: var(--amber); box-shadow: 0 0 10px rgba(255,209,102,.5); }
+  .steps b { color: var(--amber); }
+  .warn { display: flex !important; align-items: center; justify-content: center; gap: 8px; margin: 12px 0 0 !important; font-size: 12.5px !important; }
+  .warn .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--enemy); box-shadow: 0 0 10px var(--enemy); flex: none; }
+
+  .pu-legend { list-style: none; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 12px 0 0; padding: 0; }
+  .pu-legend li {
+    display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: var(--r-pill);
+    font-size: 12px; color: var(--ink-dim); background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(var(--c-rgb), .38);
+  }
+  .pu-legend .pu-ico { color: rgb(var(--c-rgb)); }
+
+  .field { margin: 18px 0 4px; text-align: start; }
+  .field-label { display: block; margin: 0 4px 6px; font-size: 12px; color: var(--muted); }
   .panel input[type=text] {
-    width: 100%; padding: 10px 12px; margin: 14px 0; border-radius: 8px;
-    border: 1px solid #3a4468; background: #0b0f1a; color: #eef2ff; font-size: 15px; text-align: center;
+    width: 100%; height: 46px; margin: 0; padding: 0 14px; border-radius: var(--r-md);
+    border: 1px solid rgba(120,160,255,0.28); background: rgba(4,7,14,0.72); color: var(--ink);
+    font-size: 16px; text-align: center;
+    transition: border-color .2s, box-shadow .2s;
   }
+  .panel input[type=text]::placeholder { color: var(--muted); }
+  .panel input[type=text]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(91,224,196,.18), 0 0 18px rgba(91,224,196,.25);
+  }
+
+  .best { font-size: 12.5px !important; color: var(--muted) !important; margin-top: 12px !important; }
+  .best b { font-family: var(--font-display); color: var(--amber); }
+
+  .controls {
+    display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: 14px 22px;
+    margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line);
+  }
+  .ctrl { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+  .keys { display: grid; grid-template-columns: repeat(3, auto); gap: 3px; direction: ltr; }
+  .keys .kbd { grid-row: 2; }
+  .keys .kbd.up { grid-row: 1; grid-column: 2; }
+  .keys-row { display: flex; gap: 4px; direction: ltr; }
+
+  .kbd {
+    display: inline-grid; place-items: center; min-width: 26px; height: 24px; padding: 0 7px;
+    border-radius: 6px; border: 1px solid #3a4468; border-bottom-width: 3px;
+    background: linear-gradient(#1f2842, #141a2c); color: var(--ink);
+    font-family: var(--font-ui); font-size: 11px; font-weight: 700; line-height: 1; direction: ltr;
+  }
+
+  /* Buttons */
+  .actions { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 20px; }
   .btn {
-    display: inline-block; margin-top: 10px; padding: 10px 26px; border-radius: 8px;
-    border: none; background: linear-gradient(90deg,#3b6fd6,#5be0c4); color: #05070d;
-    font-size: 15px; font-weight: 700; cursor: pointer;
+    position: relative; isolation: isolate; overflow: hidden;
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    min-width: 210px; min-height: 46px; padding: 0 28px; border: 0; border-radius: var(--r-pill);
+    background: linear-gradient(135deg, #5be0c4 0%, #3b6fd6 100%);
+    color: #04101c; font-size: 16px; font-weight: 800; letter-spacing: .02em; cursor: pointer;
+    box-shadow: 0 0 0 1px rgba(91,224,196,.5), 0 8px 24px rgba(59,111,214,.35), 0 0 22px rgba(91,224,196,.28);
+    transition: transform .15s var(--ease-out), box-shadow .25s, filter .2s;
   }
-  .btn:hover { filter: brightness(1.1); }
-  .kbd { display:inline-block; background:#1c2333; border:1px solid #3a4468; border-radius:4px; padding:1px 8px; font-size:12px; }
-  table.scores { width: 100%; margin-top: 10px; border-collapse: collapse; font-size: 13px; }
-  table.scores th, table.scores td { padding: 4px 6px; text-align: right; border-bottom: 1px solid #232a42; }
-  table.scores th { color: #7f8bb3; font-weight: 500; }
+  .btn::after {
+    content: ""; position: absolute; inset: 0; z-index: -1;
+    background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.5) 50%, transparent 65%);
+    transform: translateX(120%); transition: transform .6s var(--ease-out);
+  }
+  .btn:hover { transform: translateY(-1px); filter: brightness(1.06); box-shadow: 0 0 0 1px rgba(91,224,196,.8), 0 10px 28px rgba(59,111,214,.45), 0 0 32px rgba(91,224,196,.45); }
+  .btn:hover::after { transform: translateX(-120%); }
+  .btn:active { transform: translateY(1px) scale(.98); filter: brightness(.95); }
+  .btn svg { width: 18px; height: 18px; fill: currentColor; }
+  .btn .kbd { height: 20px; min-width: 0; font-size: 10px; color: #04101c; background: rgba(255,255,255,.35); border-color: rgba(4,16,28,.25); }
+  .btn-ghost {
+    background: rgba(255,255,255,0.04); color: var(--ink);
+    box-shadow: inset 0 0 0 1px var(--line-strong);
+  }
+  .btn-ghost:hover { background: rgba(91,224,196,.08); box-shadow: inset 0 0 0 1px var(--accent), 0 0 18px rgba(91,224,196,.2); }
+  .btn-gold { background: linear-gradient(135deg, #ffd166, #ffb020); color: #1b1200; box-shadow: 0 0 0 1px rgba(255,209,102,.6), 0 8px 24px rgba(255,176,32,.3), 0 0 24px rgba(255,209,102,.3); }
+  .btn-gold:hover { box-shadow: 0 0 0 1px rgba(255,209,102,.9), 0 10px 28px rgba(255,176,32,.4), 0 0 34px rgba(255,209,102,.5); }
+
+  .hint { font-size: 12px !important; color: var(--muted) !important; margin-top: 16px !important; }
+
+  /* Badges and stats */
+  .badge-icon {
+    --c-rgb: 91,224,196;
+    width: 64px; height: 64px; margin: 0 auto 12px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: radial-gradient(circle, rgba(var(--c-rgb), .24), rgba(var(--c-rgb), .04) 70%);
+    border: 1px solid rgba(var(--c-rgb), .45);
+    box-shadow: 0 0 26px rgba(var(--c-rgb), .32);
+  }
+  .badge-icon svg { width: 32px; height: 32px; fill: rgb(var(--c-rgb)); filter: drop-shadow(0 0 6px rgba(var(--c-rgb), .7)); }
+  .badge-icon.danger { --c-rgb: 255,77,94; }
+  .badge-icon.gold { --c-rgb: 255,209,102; width: 76px; height: 76px; }
+  .badge-icon.gold svg { width: 40px; height: 40px; }
+  .screen:not(.hidden) .badge-icon.gold svg { animation: trophyPop .8s var(--ease-back) .2s both; }
+  @keyframes trophyPop { from { transform: scale(.3) rotate(-20deg); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  .stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 16px 0 4px; }
+  .stat {
+    flex: 1 1 0; min-width: 92px; padding: 10px 10px 9px; border-radius: var(--r-md);
+    display: flex; flex-direction: column; gap: 4px;
+    background: rgba(255,255,255,0.035); border: 1px solid var(--line);
+  }
+  .stat-label { font-size: 11px; color: var(--muted); }
+  .stat b { font-family: var(--font-display); font-variant-numeric: tabular-nums; font-size: 19px; color: var(--ink); }
+  .stat-hero b { font-size: 24px; color: var(--amber); text-shadow: 0 0 16px rgba(255,209,102,.45); }
+  .stat-accent b { color: var(--accent); text-shadow: 0 0 14px rgba(91,224,196,.4); }
+
+  /* Game over */
+  .panel-danger { --edge: var(--enemy); border-color: rgba(255,77,94,.3); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 24px 60px rgba(0,0,0,.6), 0 0 42px rgba(255,77,94,.18); }
+  .panel h1.title-danger {
+    color: #ff6b78;
+    text-shadow: 2px 0 rgba(91,224,196,.55), -2px 0 rgba(255,77,94,.85), 0 0 24px rgba(255,77,94,.5);
+  }
+  .screen:not(.hidden) .panel > .title-danger { animation: rise .45s var(--ease-out) both, glitch .5s steps(2, end) .45s both; }
+  @keyframes glitch {
+    0% { transform: none; }
+    20% { transform: translate(-3px, 1px); }
+    40% { transform: translate(3px, -1px); }
+    60% { transform: translate(-2px, 0); }
+    80% { transform: translate(2px, 1px); }
+    100% { transform: none; }
+  }
+
+  /* Pause */
+  .panel-pause { width: min(380px, 100%); }
+
+  /* Win */
+  .panel-gold { --edge: var(--amber); width: min(460px, 100%); border-color: rgba(255,209,102,.32); box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 24px 60px rgba(0,0,0,.6), 0 0 48px rgba(255,176,32,.2); }
+  .panel h1.title-gold {
+    font-size: 34px;
+    background: linear-gradient(180deg, #fff6d8, #ffd166 55%, #ffb020);
+    -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 12px rgba(255,176,32,.45));
+  }
+
+  /* Level complete */
+  .panel-celebrate {
+    --edge: var(--amber); width: min(400px, 100%); overflow: visible;
+    border-color: rgba(255,209,102,.4);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.1), 0 20px 50px rgba(0,0,0,.5), 0 0 50px rgba(255,176,32,.25);
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  }
+  .screen:not(.hidden) .panel-celebrate { animation: bannerIn .6s var(--ease-back) both; }
+  @keyframes bannerIn {
+    0% { opacity: 0; transform: scale(.6) rotate(-2deg); }
+    60% { opacity: 1; transform: scale(1.04) rotate(.5deg); }
+    100% { opacity: 1; transform: none; }
+  }
+  .kicker {
+    display: inline-block; margin-bottom: 10px; padding: 4px 14px; border-radius: var(--r-pill);
+    font-size: 12px; font-weight: 800; letter-spacing: .06em;
+    color: #2a1c00; background: linear-gradient(90deg, #ffd166, #ffb020);
+    box-shadow: 0 0 18px rgba(255,176,32,.5);
+  }
+  .panel h2#lc-title {
+    margin: 0 0 4px; font-size: clamp(26px, 7vw, 34px); font-weight: 800;
+    background: linear-gradient(180deg, #fff6d8, #ffd166 55%, #ffb020);
+    -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 12px rgba(255,176,32,.45));
+  }
+  .lc-next { margin-top: 14px; font-size: 12px; color: var(--muted); }
+  .lc-progress { height: 4px; margin-top: 8px; border-radius: var(--r-pill); background: rgba(255,255,255,.08); overflow: hidden; }
+  .lc-progress i { display: block; height: 100%; background: linear-gradient(to left, #ffb020, #ffd166); transform-origin: right center; transform: scaleX(0); }
+  .screen:not(.hidden) .lc-progress i { animation: lcBar 1.5s linear both; }
+  @keyframes lcBar { to { transform: scaleX(1); } }
+
+  .rays {
+    position: absolute; inset: 0; margin: auto; width: 900px; height: 900px; border-radius: 50%;
+    pointer-events: none; opacity: 0; will-change: transform;
+    background: repeating-conic-gradient(from 0deg, rgba(255,209,102,.16) 0deg 7deg, transparent 7deg 18deg);
+    -webkit-mask: radial-gradient(circle, #000 0, #000 16%, transparent 62%);
+    mask: radial-gradient(circle, #000 0, #000 16%, transparent 62%);
+  }
+  .screen:not(.hidden) .rays { animation: raysIn .7s var(--ease-out) forwards, spin 18s linear infinite; }
+  @keyframes raysIn { from { opacity: 0; transform: scale(.5); } to { opacity: 1; transform: scale(1); } }
+  @keyframes spin { to { rotate: 360deg; } }
+
+  .sparks { position: absolute; inset: 0; margin: auto; width: 0; height: 0; pointer-events: none; }
+  .sparks i {
+    position: absolute; left: 0; top: 0; width: 8px; height: 8px; margin: -4px; border-radius: 2px;
+    background: var(--c, #ffd166); box-shadow: 0 0 10px var(--c, #ffd166); opacity: 0;
+  }
+  .screen:not(.hidden) .sparks i { animation: spark 1.2s var(--ease-out) var(--d, 0s) both; }
+  @keyframes spark {
+    0% { opacity: 0; transform: translate(0, 0) scale(.3) rotate(0deg); }
+    15% { opacity: 1; }
+    100% { opacity: 0; transform: translate(var(--x), var(--y)) scale(1) rotate(220deg); }
+  }
+
+  /* Score tables */
+  .table-title { margin: 18px 0 8px; font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--muted); }
+  .scores-wrap { border-radius: var(--r-md); border: 1px solid var(--line); background: rgba(5,8,16,0.5); overflow: hidden; }
+  table.scores { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.scores th {
+    padding: 8px 10px; text-align: start; font-size: 11px; font-weight: 500; color: var(--muted);
+    background: rgba(255,255,255,0.03); border-bottom: 1px solid var(--line);
+  }
+  table.scores td { padding: 7px 10px; text-align: start; border-bottom: 1px solid rgba(120,160,255,0.08); }
+  table.scores tbody tr:last-child td { border-bottom: 0; }
+  table.scores .c-rank { width: 1%; padding-inline-end: 4px; }
+  table.scores .c-name { width: 100%; max-width: 0; }
+  table.scores .c-score { font-family: var(--font-display); font-variant-numeric: tabular-nums; color: var(--amber); white-space: nowrap; }
+  table.scores .c-level { text-align: center; font-family: var(--font-display); color: var(--ink-dim); width: 1%; }
+  .name-cell { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rank {
+    display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+    font-family: var(--font-display); font-size: 11px; font-weight: 900; color: var(--muted);
+    background: rgba(255,255,255,0.05);
+  }
+  tr.rank-1 .rank { color: #3a2800; background: radial-gradient(circle at 35% 30%, #fff3c4, #ffd166 45%, #b8860b); box-shadow: 0 0 10px rgba(255,209,102,.6); }
+  tr.rank-2 .rank { color: #1e2433; background: radial-gradient(circle at 35% 30%, #ffffff, #c6cfe0 45%, #7d8699); box-shadow: 0 0 8px rgba(198,207,224,.45); }
+  tr.rank-3 .rank { color: #2b1605; background: radial-gradient(circle at 35% 30%, #ffd9b8, #e39a5c 45%, #8a4b1c); box-shadow: 0 0 8px rgba(227,154,92,.45); }
+  tr.me td { background: rgba(91,224,196,0.09); }
+  tr.me td:first-child { box-shadow: inset -3px 0 0 var(--accent); }
+  .screen:not(.hidden) tr.me td { animation: rowFlash 1.2s ease-in-out .5s 2; }
+  @keyframes rowFlash { 0%, 100% { background: rgba(91,224,196,0.09); } 50% { background: rgba(91,224,196,0.26); } }
+  .me-tag {
+    flex: none; padding: 1px 7px; border-radius: var(--r-pill);
+    font-size: 10px; font-weight: 800; color: #05241e; background: var(--accent);
+  }
+  tr.sep td { padding: 0; text-align: center; color: var(--muted); line-height: 14px; }
+  tr.empty td { padding: 14px; text-align: center; color: var(--muted); }
+
+  /* ================= RESPONSIVE ================= */
+  @media (max-width: 1100px) {
+    .fx-label { display: none; }
+  }
+  @media (max-width: 640px) {
+    #hud { padding: 8px 12px 20px; gap: 6px; }
+    #hud .group { flex: 1 1 100%; gap: 5px; }
+    .chip { height: 30px; padding: 0 9px; gap: 5px; }
+    .fx { height: 30px; }
+    .fx-ring { width: 22px; height: 22px; }
+    .chip-label, .chip-name { display: none; }
+    #fillrow { flex: 1 1 100%; margin-inline-start: 0; padding-inline: 10px 3px; }
+    #fillbar-wrap { flex: 1; width: auto; }
+    .panel { padding: 24px 18px 20px; }
+    .steps { grid-template-columns: 1fr; }
+    .steps li { display: flex; align-items: center; gap: 10px; text-align: start; padding: 8px 10px; }
+    .steps li::before { margin: 0; flex: none; }
+    .btn { min-width: 0; width: 100%; }
+    .rays { width: 640px; height: 640px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *:not(#controls-hint), *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-delay: 0s !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+      transition-delay: 0s !important;
+    }
+    .rays, .sparks, #fillbar::after { display: none; }
+    body:has(#screen-start.hidden) #controls-hint { animation-name: hintFade; }
+    @keyframes hintFade { 0% { opacity: 0; } 8% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+  }
+  /* FX overlays (driven per-frame by FX; motion only) */
+  #fx-layer { position: fixed; inset: 0; z-index: 12; pointer-events: none; overflow: hidden; }
+  .fx-pop {
+    position: absolute; left: 0; top: 0; white-space: nowrap; font-weight: 800;
+    unicode-bidi: isolate; will-change: transform, opacity;
+    text-shadow: 0 0 10px currentColor, 0 2px 4px rgba(0,0,0,0.8);
+  }
+  #fx-banner {
+    font-family: var(--font-ui);
+    position: fixed; left: 50%; top: 40%; z-index: 15; pointer-events: none; text-align: center;
+    opacity: 0; transform: translate(-50%, -50%); will-change: transform, opacity;
+  }
+  #fx-banner .fx-banner-title {
+    font-size: clamp(40px, 9vw, 84px); font-weight: 900; color: #ffd166; letter-spacing: 2px;
+    text-shadow: 0 0 24px rgba(255,209,102,0.55), 0 4px 10px rgba(0,0,0,0.8);
+  }
+  #fx-banner .fx-banner-sub { font-size: clamp(14px, 2.4vw, 20px); color: #b9e8ff; margin-top: 4px; text-shadow: 0 2px 6px rgba(0,0,0,0.9); }
+  #fx-vignette {
+    position: fixed; inset: 0; z-index: 11; pointer-events: none; opacity: 0;
+    box-shadow: inset 0 0 160px 40px rgba(255, 40, 60, 0.85);
+  }
 </style>
 </head>
 <body>
 
+<svg class="sprite" width="0" height="0" aria-hidden="true" focusable="false">
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></symbol>
+  <symbol id="i-heart-broken" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/><path d="M12 5.2 10.2 9.6l3 2.2-2.4 3.6 1.4 3.2" fill="none" stroke="#0b1020" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.63-1.27-7.38 5.74zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
+  <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/></symbol>
+</svg>
+
 <div id="hud">
   <div class="group">
-    <div class="item">שחקן: <b id="hud-name">-</b></div>
-    <div class="item">ניקוד: <b id="hud-score">0</b></div>
-    <div class="item">חיים: <b id="hud-lives">3</b></div>
-    <div class="item">שלב: <b id="hud-level">1</b>/<span id="hud-maxlevel">20</span></div>
+    <div class="chip chip-name item" title="שחקן">
+      <svg class="ico" aria-hidden="true"><use href="#i-user"/></svg>
+      <b id="hud-name">-</b>
+    </div>
+    <div class="chip chip-score item" id="chip-score">
+      <svg class="ico" aria-hidden="true"><use href="#i-star"/></svg>
+      <span class="chip-label">ניקוד</span>
+      <b id="hud-score">0</b>
+    </div>
+    <div class="chip chip-lives item" id="chip-lives">
+      <span id="hud-lives" class="hearts" role="img" aria-label="חיים: 3"><svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-heart"/></svg><svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-heart"/></svg><svg class="heart" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-heart"/></svg></span>
+    </div>
+    <div class="chip chip-level item" id="chip-level" style="--lvl:.05">
+      <svg class="ico" aria-hidden="true"><use href="#i-layers"/></svg>
+      <span class="chip-label">שלב</span>
+      <span class="lvl-num" dir="ltr"><b id="hud-level">1</b><span class="sep">/</span><span id="hud-maxlevel">20</span></span>
+      <i class="lvl-track" aria-hidden="true"></i>
+    </div>
     <div id="hud-effects" class="item"></div>
   </div>
-  <div id="fillrow">
-    <span>כיבוש:</span>
-    <div id="fillbar-wrap"><div id="fillbar"></div></div>
-    <b id="hud-fill">0%</b>
+  <div id="fillrow" class="chip">
+    <span class="chip-label">כיבוש</span>
+    <div id="fillbar-wrap" role="progressbar" aria-label="אחוז כיבוש" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" style="--target:80%">
+      <div id="fillbar"></div>
+      <i class="fill-target" aria-hidden="true"></i>
+    </div>
+    <span class="fill-num" dir="ltr"><b id="hud-fill">0%</b><span id="fill-goal" class="fill-goal">/80%</span></span>
     <div id="hud-icon-btns">
-      <button id="pause-btn" type="button" title="השהיה (Esc)">⏸</button>
+      <button id="pause-btn" type="button" title="השהיה (Esc)" aria-label="השהיה">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-pause"/></svg>
+      </button>
     </div>
   </div>
 </div>
 
+<div id="controls-hint" aria-hidden="true">
+  <span><span class="kbd">←↑↓→</span> / <span class="kbd">WASD</span> תנועה</span>
+  <span class="dot-sep">·</span>
+  <span><span class="kbd">Esc</span> / <span class="kbd">P</span> השהיה</span>
+</div>
+
 <div id="screen-start" class="screen">
-  <div class="panel">
-    <h1>Xonix 3D</h1>
-    <p>שלוט בחללית וחתוך שטחים מתוך המסך, סגור אותם חזרה לקיר כדי לכבוש אותם.<br>
-    הימנע מהכדורים הקופצים - מגע בשביל הפעיל שלך או בך עצמך שווה מוות.<br>
-    כבוש <b>80%</b> מהשטח כדי לעבור שלב. 20 שלבים, קושי עולה.</p>
-    <input id="name-input" type="text" maxlength="16" placeholder="הכנס שם שחקן">
-    <div><button class="btn" id="start-btn">התחל משחק</button></div>
-    <p>שליטה: <span class="kbd">חצים</span> או <span class="kbd">WASD</span> · <span class="kbd">Space</span> להתחלה</p>
+  <div class="panel panel-start">
+    <h1 class="logo" aria-label="Xonix 3D"><span class="logo-word" aria-hidden="true">XONIX</span><span class="logo-3d" aria-hidden="true">3D</span></h1>
+    <p class="tagline">חתוך · סגור · כבוש</p>
+    <ol class="steps">
+      <li>צא מהקיר וצייר שביל בשטח הפתוח</li>
+      <li>חזור לקיר כדי לסגור ולכבוש את השטח</li>
+      <li>כבוש <b>80%</b> כדי לעבור שלב · 20 שלבים</li>
+    </ol>
+    <p class="warn"><span class="dot" aria-hidden="true"></span>כדור שפוגע בך או בשביל הפעיל שלך - פוסל חיים</p>
+    <ul class="pu-legend" aria-label="חיזוקים">
+      <li style="--c-rgb:91,224,196"><span class="pu-ico">⚡</span>מהירות</li>
+      <li style="--c-rgb:102,170,255"><span class="pu-ico">🛡</span>מגן</li>
+      <li style="--c-rgb:191,233,255"><span class="pu-ico">❄</span>הקפאה</li>
+      <li style="--c-rgb:255,111,145"><span class="pu-ico">❤</span>חיים</li>
+    </ul>
+    <div class="field">
+      <label class="field-label" for="name-input">שם שחקן</label>
+      <input id="name-input" type="text" maxlength="16" placeholder="הכנס שם שחקן" autocomplete="nickname" spellcheck="false">
+    </div>
+    <div class="actions">
+      <button class="btn" id="start-btn" type="button">התחל משחק <span class="kbd">Space</span></button>
+    </div>
+    <p id="start-best" class="best hidden">שיא: <b id="start-best-score">0</b> · <span id="start-best-name"></span></p>
+    <div class="controls">
+      <div class="ctrl">
+        <span class="keys"><span class="kbd up">↑</span><span class="kbd">←</span><span class="kbd">↓</span><span class="kbd">→</span></span>
+        <span>תנועה</span>
+      </div>
+      <div class="ctrl">
+        <span class="keys"><span class="kbd up">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span></span>
+        <span>או</span>
+      </div>
+      <div class="ctrl">
+        <span class="keys-row"><span class="kbd">Esc</span><span class="kbd">P</span></span>
+        <span>השהיה</span>
+      </div>
+    </div>
   </div>
 </div>
 
-<div id="screen-levelcomplete" class="screen hidden">
-  <div class="panel">
+<div id="screen-levelcomplete" class="screen screen-celebrate hidden">
+  <div class="rays" aria-hidden="true"></div>
+  <div class="sparks" aria-hidden="true">
+    <i style="--x:-170px;--y:-120px;--d:.05s;--c:#ffd166"></i>
+    <i style="--x:170px;--y:-110px;--d:.08s;--c:#5be0c4"></i>
+    <i style="--x:-210px;--y:20px;--d:.12s;--c:#ffb020"></i>
+    <i style="--x:220px;--y:30px;--d:.1s;--c:#ffd166"></i>
+    <i style="--x:-120px;--y:150px;--d:.15s;--c:#5be0c4"></i>
+    <i style="--x:130px;--y:160px;--d:.06s;--c:#ffb020"></i>
+    <i style="--x:10px;--y:-190px;--d:.02s;--c:#ffffff"></i>
+    <i style="--x:-40px;--y:200px;--d:.18s;--c:#3b6fd6"></i>
+    <i style="--x:250px;--y:-40px;--d:.2s;--c:#5be0c4"></i>
+    <i style="--x:-250px;--y:-50px;--d:.22s;--c:#ffd166"></i>
+  </div>
+  <div class="panel panel-celebrate" role="status" aria-live="polite">
+    <div class="kicker">כל הכבוד!</div>
     <h2 id="lc-title">שלב 1 הושלם!</h2>
-    <p>ניקוד נוכחי: <b id="lc-score">0</b></p>
-    <p>עובר לשלב הבא...</p>
+    <div class="stats">
+      <div class="stat stat-hero"><span class="stat-label">ניקוד</span><b id="lc-score">0</b></div>
+      <div class="stat stat-accent"><span class="stat-label">בונוס שלב</span><b id="lc-bonus">+0</b></div>
+      <div class="stat"><span class="stat-label">כיבוש</span><b id="lc-fill">0%</b></div>
+    </div>
+    <div class="lc-next">עובר לשלב הבא...</div>
+    <div class="lc-progress" aria-hidden="true"><i></i></div>
   </div>
 </div>
 
-<div id="screen-gameover" class="screen hidden">
-  <div class="panel">
-    <h1 style="color:#ff6b6b;">המשחק נגמר</h1>
-    <p>הגעת לשלב <b id="go-level">1</b> · ניקוד סופי: <b id="go-score">0</b></p>
-    <table class="scores"><thead><tr><th>שם</th><th>ניקוד</th><th>שלב</th></tr></thead><tbody id="go-scores"></tbody></table>
-    <div><button class="btn" id="go-restart-btn">שחק שוב</button></div>
+<div id="screen-gameover" class="screen screen-danger hidden">
+  <div class="panel panel-danger">
+    <div class="badge-icon danger" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-heart-broken"/></svg></div>
+    <h1 class="title-danger">המשחק נגמר</h1>
+    <div class="stats">
+      <div class="stat"><span class="stat-label">הגעת לשלב</span><b id="go-level">1</b></div>
+      <div class="stat stat-hero"><span class="stat-label">ניקוד סופי</span><b id="go-score">0</b></div>
+    </div>
+    <h3 class="table-title">טבלת שיאים</h3>
+    <div class="scores-wrap">
+      <table class="scores">
+        <thead><tr><th class="c-rank">#</th><th class="c-name">שם</th><th>ניקוד</th><th class="c-level">שלב</th></tr></thead>
+        <tbody id="go-scores"></tbody>
+      </table>
+    </div>
+    <div class="actions">
+      <button class="btn" id="go-restart-btn" type="button">שחק שוב</button>
+    </div>
   </div>
 </div>
 
 <div id="screen-pause" class="screen hidden">
-  <div class="panel">
+  <div class="panel panel-pause">
+    <div class="badge-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-pause"/></svg></div>
     <h2>השהיה</h2>
-    <p>המשחק מושהה. לחץ המשך כדי לחזור.</p>
-    <div><button class="btn" id="resume-btn">המשך</button></div>
-    <div><button class="btn" id="pause-quit-btn" style="background:#2a3352;color:#eef2ff;">חזרה לתפריט</button></div>
-    <p>לחצו <span class="kbd">Esc</span> או <span class="kbd">P</span> להשהיה/המשך</p>
+    <p>המשחק מושהה. הכדורים מחכים לך.</p>
+    <div class="actions">
+      <button class="btn" id="resume-btn" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-play"/></svg>המשך</button>
+      <button class="btn btn-ghost" id="pause-quit-btn" type="button">חזרה לתפריט</button>
+    </div>
+    <p class="hint">לחצו <span class="kbd">Esc</span> או <span class="kbd">P</span> להשהיה/המשך</p>
   </div>
 </div>
 
-<div id="screen-win" class="screen hidden">
-  <div class="panel">
-    <h1 style="color:#5be0c4;">ניצחת! 🏆</h1>
+<div id="screen-win" class="screen screen-win hidden">
+  <div class="rays" aria-hidden="true"></div>
+  <div class="sparks" aria-hidden="true">
+    <i style="--x:-190px;--y:-150px;--d:.1s;--c:#ffd166"></i>
+    <i style="--x:190px;--y:-140px;--d:.14s;--c:#ffb020"></i>
+    <i style="--x:-240px;--y:10px;--d:.18s;--c:#5be0c4"></i>
+    <i style="--x:240px;--y:20px;--d:.12s;--c:#ffd166"></i>
+    <i style="--x:0px;--y:-230px;--d:.06s;--c:#ffffff"></i>
+    <i style="--x:-140px;--y:190px;--d:.22s;--c:#ffb020"></i>
+    <i style="--x:150px;--y:200px;--d:.2s;--c:#5be0c4"></i>
+    <i style="--x:280px;--y:-80px;--d:.26s;--c:#ffd166"></i>
+  </div>
+  <div class="panel panel-gold">
+    <div class="badge-icon gold" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-trophy"/></svg></div>
+    <h1 class="title-gold">ניצחת!</h1>
     <p>כבשת את כל 20 השלבים!</p>
-    <p>ניקוד סופי: <b id="win-score">0</b></p>
-    <table class="scores"><thead><tr><th>שם</th><th>ניקוד</th><th>שלב</th></tr></thead><tbody id="win-scores"></tbody></table>
-    <div><button class="btn" id="win-restart-btn">שחק שוב</button></div>
+    <div class="stats">
+      <div class="stat stat-hero"><span class="stat-label">ניקוד סופי</span><b id="win-score">0</b></div>
+    </div>
+    <h3 class="table-title">טבלת שיאים</h3>
+    <div class="scores-wrap">
+      <table class="scores">
+        <thead><tr><th class="c-rank">#</th><th class="c-name">שם</th><th>ניקוד</th><th class="c-level">שלב</th></tr></thead>
+        <tbody id="win-scores"></tbody>
+      </table>
+    </div>
+    <div class="actions">
+      <button class="btn btn-gold" id="win-restart-btn" type="button">שחק שוב</button>
+    </div>
   </div>
 </div>
 
@@ -153,6 +781,11 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// Linear workflow: hex colors are sRGB and get converted to linear on assignment. Must run
+// before any THREE.Color is created. (r149 API; renamed to ColorManagement.enabled in r152.)
+THREE.ColorManagement.legacyMode = false;
 
 // ===== CONFIG =====
 const CONFIG = {
@@ -398,6 +1031,7 @@ const Player = {
         this.trailSet[i] = 1;
         Grid.setState(i, TRAIL);
       } else if (s === WALL) {
+        if (Game.ballOnTrail()) { Game.loseLife(); return; }
         Game.closeLoop();
       }
     }
@@ -479,6 +1113,13 @@ const Enemies = {
       const cyForY = Math.floor(ny < b.y ? ny : ny - 0.001);
       if (this.blocked(cxForY, cyForY)) { b.vy = -b.vy; ny = b.y + b.vy * dt; }
 
+      // Each axis was tested against the OTHER axis's old coordinate, so a diagonal
+      // step could land the center inside a wall cell at a convex corner. Reflect instead.
+      const fcx = Math.floor(nx < b.x ? nx : nx - 0.001), fcy = Math.floor(ny < b.y ? ny : ny - 0.001);
+      if (this.blocked(fcx, fcy) && !this.blocked(Math.floor(b.x), Math.floor(b.y))) {
+        b.vx = -b.vx; b.vy = -b.vy;
+        continue;
+      }
       b.x = nx; b.y = ny;
     }
   }
@@ -528,6 +1169,7 @@ const PowerUps = {
           Render.cellWorldX(it.col), 1.0, Render.cellWorldZ(it.row),
           POWERUP_DEFS[it.type].color, 26, 3.5, 0.5
         );
+        FX.onPowerup(it);
         this.applyEffect(it.type);
         Render.removePowerupMesh(it);
         this.items.splice(i, 1);
@@ -547,6 +1189,15 @@ const PowerUps = {
 };
 
 // ===== RENDER =====
+// Color pipeline (three r149 + EffectComposer):
+//  - THREE.ColorManagement.legacyMode = false (set right after imports) -> hex colors are
+//    treated as sRGB and converted to linear, so lighting math happens in linear space.
+//  - Scene renders into a HalfFloat (HDR, MSAA) target in LINEAR space, no tone mapping:
+//    r149 applies renderer.toneMapping per-material even inside render targets, which would
+//    tone-map BEFORE the bloom add — so renderer.toneMapping stays NoToneMapping.
+//  - The final composite pass (renders to screen) does: base + bloom -> ACES -> vignette ->
+//    linear->sRGB -> dither. It must do the sRGB encode itself: a custom ShaderMaterial in
+//    a ShaderPass never calls linearToOutputTexel, so renderer.outputEncoding is ignored.
 const Render = {
   scene: null, camera: null, renderer: null,
   mesh: null, dummy: null, tmpColor: null,
@@ -555,28 +1206,40 @@ const Render = {
   cellWorldX(c) { return (c - Grid.cols / 2 + 0.5) * CONFIG.CELL; },
   cellWorldZ(r) { return (r - Grid.rows / 2 + 0.5) * CONFIG.CELL; },
 
+  // Pixel-ratio cap while post-processing is on. Measured: the added passes are fill-rate bound;
+  // at 1.5 the upgraded frame is cheaper than the old renderer at 2.0 (see spec §4).
+  MAX_PIXEL_RATIO: 1.5,
+
   init() {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x05070d);
-    this.scene.fog = new THREE.Fog(0x05070d, 60, 140);
+    this.scene.background = null; // the sky dome covers every pixel
+    this.scene.fog = new THREE.Fog(0x05070d, 60, 140); // near/far re-fit in fitCameraToBoard
 
     this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 500);
     this.cameraTilt = THREE.MathUtils.degToRad(27); // fixed elevation angle for the top-down-ish look
     this.fitCameraToBoard();
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    // Render at the display's real pixel density (capped at 2x for perf) instead of
-    // always 1x — on high-DPI screens the canvas was being upscaled and looked blurry.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    // antialias:false — the canvas' own MSAA is useless behind an EffectComposer; AA comes from
+    // the multisampled composer render target below.
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, stencil: false, powerPreference: 'high-performance' });
+    const pr = Math.min(window.devicePixelRatio || 1, this.MAX_PIXEL_RATIO);
+    this.renderer.setPixelRatio(pr);
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.outputEncoding = THREE.sRGBEncoding;
+    this.renderer.outputEncoding = THREE.sRGBEncoding; // only affects direct-to-screen draws
+    this.renderer.toneMapping = THREE.NoToneMapping;   // tone mapping is done in the composite pass
+    this.renderer.setClearColor(0x05070d, 1);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.body.insertBefore(this.renderer.domElement, document.body.firstChild);
 
-    this.scene.add(new THREE.HemisphereLight(0x8fb4ff, 0x0a0d16, 0.5));
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.25));
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.15);
+    // Image-based lighting: cheap procedural studio env, prefiltered once at startup.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.envRT = pmrem.fromScene(new RoomEnvironment(), 0.04);
+    this.scene.environment = this.envRT.texture;
+    pmrem.dispose();
+
+    this.scene.add(new THREE.HemisphereLight(0x8fb4ff, 0x0a0d16, 0.35));
+    const dirLight = new THREE.DirectionalLight(0xfff4e6, 1.1);
     dirLight.position.set(25, 70, 35);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.set(2048, 2048);
@@ -587,11 +1250,50 @@ const Render = {
     dirLight.shadow.camera.bottom = -shadowExtent;
     dirLight.shadow.camera.near = 10;
     dirLight.shadow.camera.far = 160;
-    dirLight.shadow.bias = -0.0015;
+    dirLight.shadow.bias = -0.0005;
+    dirLight.shadow.normalBias = 0.03;
     this.scene.add(dirLight);
+    // Cool back/rim light (no shadow) so wall side faces facing away from the key light
+    // still read as blue instead of going flat black.
+    const rimLight = new THREE.DirectionalLight(0x6f8cff, 0.45);
+    rimLight.position.set(-40, 30, -50);
+    this.scene.add(rimLight);
 
     this.dummy = new THREE.Object3D();
     this.tmpColor = new THREE.Color();
+
+    this.initGrid();
+    this.rebuildAll();
+
+    this.initSky();
+    this.initShip();
+    this.initEnemyAssets();
+    this.initPowerupAssets();
+    this.initParticles();
+    this.initPostprocessing();
+
+    window.addEventListener('resize', () => this.onResize());
+  },
+
+  // ---------- Grid (walls / trail / floor) ----------
+  initGrid() {
+    // Per-cell state mirrored into an 84x56 RGBA texture so the fragment shader can look at
+    // neighbours (wall-edge rim lines, floor contact shadow) without any extra geometry.
+    this.gridTexData = new Uint8Array(Grid.cols * Grid.rows * 4);
+    this.gridTex = new THREE.DataTexture(this.gridTexData, Grid.cols, Grid.rows, THREE.RGBAFormat, THREE.UnsignedByteType);
+    this.gridTex.magFilter = THREE.NearestFilter;
+    this.gridTex.minFilter = THREE.NearestFilter;
+    this.gridTex.generateMipmaps = false;
+    this.gridTex.needsUpdate = true;
+
+    this.gridUniforms = {
+      uGridTex: { value: this.gridTex },
+      uGridSize: { value: new THREE.Vector2(Grid.cols, Grid.rows) },
+      uTime: { value: 0 },
+      uRimColor: { value: new THREE.Color(0x7fd8ff) },
+      uTrailColor: { value: new THREE.Color(COLOR_OF[TRAIL]) },
+      uFloorPattern: { value: 1.0 } // 0 = perfectly plain floor
+    };
 
     // Cells touch edge-to-edge (no inset gap) so same-state neighbors merge into
     // one continuous smooth surface instead of a grid of visibly separate squares.
@@ -603,65 +1305,345 @@ const Render = {
     // without it vColor defaults to black and instance colors render as black regardless of value.
     const vertCount = geo.attributes.position.count;
     geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(vertCount * 3).fill(1), 3));
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.05, flatShading: false });
+    const mat = new THREE.MeshStandardMaterial({
+      vertexColors: true, roughness: 0.5, metalness: 0.15, envMapIntensity: 0.2
+    });
+    const U = this.gridUniforms;
+    mat.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, U);
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vGWorld;\nvarying vec3 vGNormal;')
+        .replace('#include <worldpos_vertex>', `#include <worldpos_vertex>
+          vec4 gW = vec4(transformed, 1.0);
+          #ifdef USE_INSTANCING
+            gW = instanceMatrix * gW;
+          #endif
+          vGWorld = (modelMatrix * gW).xyz;
+          vGNormal = objectNormal;`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>
+          varying vec3 vGWorld;
+          varying vec3 vGNormal;
+          uniform sampler2D uGridTex;
+          uniform vec2 uGridSize;
+          uniform float uTime;
+          uniform vec3 uRimColor;
+          uniform vec3 uTrailColor;
+          uniform float uFloorPattern;
+          float gState(vec2 c) {
+            if (c.x < 0.0 || c.y < 0.0 || c.x >= uGridSize.x || c.y >= uGridSize.y) return 0.0;
+            return floor(texture2D(uGridTex, (c + 0.5) / uGridSize).r * 255.0 + 0.5);
+          }
+          // distance (in cell units) from point f inside cell to the nearest edge/corner that
+          // borders a cell whose "is wall" flag differs from want (want: 1 = find walls).
+          float edgeDist(vec2 cell, vec2 f, float want) {
+            float d = 9.0;
+            float l = step(0.5, 1.0 - abs(gState(cell + vec2(-1.0, 0.0)) - 1.0)); // 1 if wall
+            float r = step(0.5, 1.0 - abs(gState(cell + vec2( 1.0, 0.0)) - 1.0));
+            float b = step(0.5, 1.0 - abs(gState(cell + vec2( 0.0,-1.0)) - 1.0));
+            float t = step(0.5, 1.0 - abs(gState(cell + vec2( 0.0, 1.0)) - 1.0));
+            float lb = step(0.5, 1.0 - abs(gState(cell + vec2(-1.0,-1.0)) - 1.0));
+            float rb = step(0.5, 1.0 - abs(gState(cell + vec2( 1.0,-1.0)) - 1.0));
+            float lt = step(0.5, 1.0 - abs(gState(cell + vec2(-1.0, 1.0)) - 1.0));
+            float rt = step(0.5, 1.0 - abs(gState(cell + vec2( 1.0, 1.0)) - 1.0));
+            if (abs(l - want) < 0.5) d = min(d, f.x);
+            if (abs(r - want) < 0.5) d = min(d, 1.0 - f.x);
+            if (abs(b - want) < 0.5) d = min(d, f.y);
+            if (abs(t - want) < 0.5) d = min(d, 1.0 - f.y);
+            if (abs(lb - want) < 0.5) d = min(d, length(f));
+            if (abs(rb - want) < 0.5) d = min(d, length(vec2(1.0 - f.x, f.y)));
+            if (abs(lt - want) < 0.5) d = min(d, length(vec2(f.x, 1.0 - f.y)));
+            if (abs(rt - want) < 0.5) d = min(d, length(1.0 - f));
+            return d;
+          }`)
+        .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+          {
+            vec2 cellF = vGWorld.xz + uGridSize * 0.5 - vGNormal.xz * 0.01;
+            vec2 cell = floor(cellF);
+            vec2 f = cellF - cell;
+            float s = gState(cell);
+            float isTop = step(0.5, vGNormal.y);
+            float aa = fwidth(cellF.x) + fwidth(cellF.y);
+
+            if (s > 0.5 && s < 1.5) {
+              // WALL: neon rim on the top face along every edge that borders non-wall.
+              float d = edgeDist(cell, f, 0.0);
+              float line = 1.0 - smoothstep(0.07, 0.07 + aa, d);
+              float glow = exp(-d * 9.0) * 0.35;
+              totalEmissiveRadiance += uRimColor * (line * 1.4 + glow) * isTop;
+              // Side faces: bright band at the top lip + darker toward the floor (fake AO).
+              float side = 1.0 - isTop;
+              totalEmissiveRadiance += uRimColor * smoothstep(0.86, 0.99, vGWorld.y) * side * 0.6;
+              diffuseColor.rgb *= mix(1.0, mix(0.35, 1.0, vGWorld.y), side);
+            } else if (s > 1.5) {
+              // TRAIL: vivid, animated emissive (NOT bloom — the grid never enters the bloom layer).
+              float pulse = 0.5 + 0.5 * sin(uTime * 7.0 - (cellF.x + cellF.y) * 0.9);
+              totalEmissiveRadiance += uTrailColor * (0.35 + 0.45 * pulse);
+            } else {
+              // FLOOR: contact shadow next to walls + very faint large-scale grid + slow scan sweep.
+              float dw = edgeDist(cell, f, 1.0);
+              diffuseColor.rgb *= mix(0.4, 1.0, smoothstep(0.0, 0.9, dw)) * isTop + (1.0 - isTop);
+              vec2 g = abs(fract(cellF / 4.0 - 0.5) - 0.5) * 4.0;
+              float gl = 1.0 - smoothstep(0.0, 0.03 + aa * 1.5, min(g.x, g.y));
+              float sweepPos = mod(uTime * 9.0, uGridSize.y + 40.0) - 20.0;
+              float sweep = exp(-pow((cellF.y - sweepPos) * 0.18, 2.0));
+              totalEmissiveRadiance += vec3(0.05, 0.14, 0.32) * uFloorPattern * isTop *
+                                       (gl * (0.025 + 0.2 * sweep) + sweep * 0.03);
+            }
+          }`);
+    };
     this.mesh = new THREE.InstancedMesh(geo, mat, Grid.cols * Grid.rows);
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
     this.scene.add(this.mesh);
+  },
 
-    this.rebuildAll();
+  // ---------- Sky: procedural nebula + twinkling stars, one mesh, no textures ----------
+  initSky() {
+    const mat = new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false, fog: false,
+      uniforms: { uTime: this.gridUniforms.uTime },
+      vertexShader: `
+        varying vec3 vDir;
+        void main() {
+          vec4 wp = modelMatrix * vec4(position, 1.0);
+          vDir = wp.xyz - cameraPosition;
+          vec4 p = projectionMatrix * viewMatrix * wp;
+          gl_Position = p.xyww; // pin to the far plane: never clipped, never occludes
+        }`,
+      fragmentShader: `
+        uniform float uTime;
+        varying vec3 vDir;
+        float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+        float noise(vec3 x) {
+          vec3 i = floor(x); vec3 f = fract(x); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x), mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                     mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x), mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+        }
+        float fbm(vec3 p) { float a = 0.5, s = 0.0; for (int i = 0; i < 3; i++) { s += a * noise(p); p *= 2.03; a *= 0.5; } return s; }
+        void main() {
+          vec3 d = normalize(vDir);
+          float n1 = fbm(d * 2.5 + vec3(0.0, 0.0, uTime * 0.01));
+          float n2 = fbm(d * 5.0 - vec3(uTime * 0.007));
+          vec3 col = vec3(0.004, 0.006, 0.014);
+          col += vec3(0.045, 0.012, 0.08) * smoothstep(0.45, 0.8, n1);
+          col += vec3(0.008, 0.04, 0.07) * smoothstep(0.5, 0.85, n2);
+          vec3 sp = d * 180.0;
+          vec3 id = floor(sp);
+          float h = hash(id);
+          float star = step(0.988, h) * smoothstep(0.32, 0.0, length(fract(sp) - 0.5));
+          col += vec3(star * (0.6 + 0.4 * sin(uTime * 2.0 + h * 90.0)) * 1.1);
+          gl_FragColor = vec4(col, 1.0);
+        }`
+    });
+    this.sky = new THREE.Mesh(new THREE.SphereGeometry(400, 32, 16), mat);
+    this.sky.frustumCulled = false;
+    this.sky.renderOrder = 1000; // drawn after opaque geometry -> early-z skips covered pixels
+    this.scene.add(this.sky);
+  },
 
-    const coneGeo = new THREE.ConeGeometry(0.62, 1.5, 20);
-    coneGeo.rotateX(Math.PI / 2);
-    const coneMat = new THREE.MeshStandardMaterial({ color: 0xffee55, emissive: 0x553300, roughness: 0.4 });
-    this.playerMesh = new THREE.Mesh(coneGeo, coneMat);
-    this.playerMesh.position.y = 1.55;
-    this.playerMesh.castShadow = true;
-    this.playerMesh.layers.enable(1); // bloom layer
-    this.scene.add(this.playerMesh);
+  // ---------- Player ship (primitives; nose points +Z like the old cone) ----------
+  initShip() {
+    const ship = new THREE.Group();
+    ship.position.y = 1.55;
 
+    const hullMat = new THREE.MeshStandardMaterial({ color: 0xffd23f, metalness: 0.55, roughness: 0.3, emissive: 0x2a1a00, envMapIntensity: 1.3 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x252c40, metalness: 0.7, roughness: 0.35, envMapIntensity: 1.2 });
+
+    // Fuselage: lathe profile around Y, then rotated so the nose points +Z, flattened vertically.
+    const prof = [
+      new THREE.Vector2(0.0, 0.85), new THREE.Vector2(0.10, 0.62), new THREE.Vector2(0.22, 0.30),
+      new THREE.Vector2(0.28, -0.10), new THREE.Vector2(0.26, -0.45), new THREE.Vector2(0.18, -0.62)
+    ];
+    const hullGeo = new THREE.LatheGeometry(prof, 20);
+    hullGeo.rotateX(Math.PI / 2);
+    hullGeo.scale(1, 0.62, 1);
+    const hull = new THREE.Mesh(hullGeo, hullMat);
+    hull.castShadow = true;
+    ship.add(hull);
+
+    // Swept wings (ExtrudeGeometry normalises winding, so the mirrored shape is safe).
+    const makeWing = (sx) => {
+      const sh = new THREE.Shape();
+      sh.moveTo(0.15 * sx, 0.25); sh.lineTo(0.95 * sx, -0.38); sh.lineTo(0.95 * sx, -0.56); sh.lineTo(0.15 * sx, -0.52);
+      sh.closePath();
+      const g = new THREE.ExtrudeGeometry(sh, { depth: 0.05, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 1 });
+      g.rotateX(Math.PI / 2); // shape Y -> +Z (forward), extrude depth -> -Y
+      g.translate(0, 0.02, 0);
+      const m = new THREE.Mesh(g, hullMat);
+      m.castShadow = true;
+      return m;
+    };
+    ship.add(makeWing(1), makeWing(-1));
+
+    // Tail fin + engine nozzle (dark metal).
+    const fin = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.26, 0.34), darkMat);
+    fin.position.set(0, 0.2, -0.42);
+    fin.castShadow = true;
+    ship.add(fin);
+    const nozzleGeo = new THREE.CylinderGeometry(0.15, 0.19, 0.16, 16, 1, true);
+    nozzleGeo.rotateX(Math.PI / 2);
+    const nozzle = new THREE.Mesh(nozzleGeo, new THREE.MeshStandardMaterial({ color: 0x252c40, metalness: 0.7, roughness: 0.35, side: THREE.DoubleSide }));
+    nozzle.position.z = -0.68;
+    ship.add(nozzle);
+
+    // Glowing parts (bloom layer 1): canopy, wingtip lights, engine flame.
+    const canopyGeo = new THREE.SphereGeometry(0.15, 18, 12);
+    canopyGeo.scale(1, 0.75, 1.9);
+    const canopy = new THREE.Mesh(canopyGeo, new THREE.MeshStandardMaterial({
+      color: 0x5fdcff, emissive: 0x1ba8e0, emissiveIntensity: 1.3, metalness: 0.1, roughness: 0.08
+    }));
+    canopy.position.set(0, 0.13, 0.18);
+    canopy.layers.enable(1);
+    ship.add(canopy);
+
+    const tipMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(0x7ff7ff).multiplyScalar(3) });
+    const tipGeo = new THREE.SphereGeometry(0.055, 10, 8);
+    for (const sx of [1, -1]) {
+      const tip = new THREE.Mesh(tipGeo, tipMat);
+      tip.position.set(0.95 * sx, 0.0, -0.47);
+      tip.layers.enable(1);
+      ship.add(tip);
+    }
+
+    const flameGeo = new THREE.ConeGeometry(0.13, 0.7, 16, 1, true);
+    flameGeo.translate(0, -0.35, 0);   // base at origin, tip at -Y
+    flameGeo.rotateX(Math.PI / 2);     // -Y -> -Z (behind the ship)
+    this.flameMat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(1.0, 0.55, 0.18).multiplyScalar(3),
+      transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide
+    });
+    this.shipFlame = new THREE.Mesh(flameGeo, this.flameMat);
+    this.shipFlame.position.z = -0.74;
+    this.shipFlame.layers.enable(1);
+    ship.add(this.shipFlame);
+
+    // Shield bubble: fresnel shell, visible only while Player.shieldTimer > 0.
+    this.shieldMat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      uniforms: { uTime: this.gridUniforms.uTime, uColor: { value: new THREE.Color(0x66aaff).multiplyScalar(1.6) }, uOpacity: { value: 1 } },
+      vertexShader: `varying vec3 vN; varying vec3 vV;
+        void main() { vec4 mv = modelViewMatrix * vec4(position, 1.0); vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `uniform vec3 uColor; uniform float uOpacity; uniform float uTime; varying vec3 vN; varying vec3 vV;
+        void main() {
+          float fr = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.2);
+          float bands = 0.8 + 0.2 * sin(uTime * 6.0 + vN.y * 14.0);
+          gl_FragColor = vec4(uColor * (fr * bands + 0.06) * uOpacity, 1.0);
+        }`
+    });
+    this.shieldMesh = new THREE.Mesh(new THREE.SphereGeometry(1.05, 32, 16), this.shieldMat);
+    this.shieldMesh.visible = false;
+    this.shieldMesh.layers.enable(1);
+    ship.add(this.shieldMesh);
+
+    this.playerMesh = ship;
+    this.scene.add(ship);
+  },
+
+  // ---------- Enemies: shared geometry/materials (old code allocated per ball, never disposed) ----------
+  initEnemyAssets() {
+    this.enemyShellGeo = new THREE.SphereGeometry(0.58, 32, 20);
+    this.enemyCoreGeo = new THREE.SphereGeometry(0.3, 16, 12);
+    this.enemyShellColor = new THREE.Color(0xff3b52);
+    this.enemyCoreColor = new THREE.Color(1.0, 0.45, 0.35).multiplyScalar(3);
+    this.enemyIceShell = new THREE.Color(0x9fdcff);
+    this.enemyIceCore = new THREE.Color(0.7, 0.9, 1.0).multiplyScalar(2.2);
+    this.enemyShellMat = new THREE.MeshStandardMaterial({
+      color: this.enemyShellColor.clone(), emissive: 0x4a0010, roughness: 0.15, metalness: 0.2,
+      envMapIntensity: 1.6, transparent: true, opacity: 0.72, depthWrite: false
+    });
+    this.enemyCoreMat = new THREE.MeshBasicMaterial({ color: this.enemyCoreColor.clone() });
+  },
+
+  // ---------- Power-ups ----------
+  initPowerupAssets() {
     this.powerupGeo = new THREE.OctahedronGeometry(0.42, 0);
-    this.initParticles();
+    this.powerupRingGeo = new THREE.RingGeometry(0.5, 0.62, 40);
+    this.powerupRingGeo.rotateX(-Math.PI / 2);
+  },
 
-    // Selective bloom: only meshes tagged with layer 1 (ship, balls, power-ups)
-    // glow. A brightness-threshold-only bloom also lit up the bright orange
-    // trail/wall cells, which was not wanted — layer-based selection keeps the
-    // grid (walls/trail/floor) completely unaffected regardless of its color.
+  initPostprocessing() {
+    const w = window.innerWidth, h = window.innerHeight;
+    const pr = this.renderer.getPixelRatio();
+    const isGL2 = this.renderer.capabilities.isWebGL2;
+
+    // Selective bloom: only meshes tagged with layer 1 (ship accents, balls, power-ups,
+    // particles, shield) glow. The grid is never in layer 1 regardless of its color.
     this.bloomLayer = new THREE.Layers();
     this.bloomLayer.set(1);
     this._bloomDarkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
     this._bloomMaterialCache = new Map();
+    this._bloomHidden = [];
 
-    this.bloomComposer = new EffectComposer(this.renderer);
+    // HalfFloat everywhere so emissive/core values > 1.0 survive until the tone mapper.
+    const bloomRT = new THREE.WebGLRenderTarget(w * pr, h * pr, { type: THREE.HalfFloatType });
+    this.bloomComposer = new EffectComposer(this.renderer, bloomRT);
+    this.bloomComposer.setPixelRatio(pr); // custom-RT composers start at pixelRatio 1 (r149)
+    this.bloomComposer.setSize(w, h);
     this.bloomComposer.renderToScreen = false;
     this.bloomComposer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight), 1.3, 0.5, 0.1
-    );
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 1.1, 0.55, 0.1);
     this.bloomComposer.addPass(this.bloomPass);
 
-    this.composer = new EffectComposer(this.renderer);
+    // Main composer: MSAA (WebGL2) replaces the canvas antialias lost to the composer.
+    const mainRT = new THREE.WebGLRenderTarget(w * pr, h * pr, {
+      type: THREE.HalfFloatType, samples: isGL2 ? (pr > 1.25 ? 2 : 4) : 0
+    });
+    this.composer = new EffectComposer(this.renderer, mainRT);
+    this.composer.setPixelRatio(pr);
+    this.composer.setSize(w, h);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    const mixPass = new ShaderPass(
+
+    this.compositePass = new ShaderPass(
       new THREE.ShaderMaterial({
         uniforms: {
           baseTexture: { value: null },
-          bloomTexture: { value: this.bloomComposer.renderTarget2.texture }
+          bloomTexture: { value: this.bloomComposer.renderTarget2.texture },
+          uExposure: { value: 0.9 },
+          uVignette: { value: 0.45 },
+          uAberration: { value: 0.004 },
+          uTime: { value: 0 }
         },
         vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
         fragmentShader: `
           uniform sampler2D baseTexture;
           uniform sampler2D bloomTexture;
+          uniform float uExposure, uVignette, uAberration, uTime;
           varying vec2 vUv;
-          void main() { gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv); }
-        `
+          vec3 RRTAndODTFit(vec3 v) {
+            vec3 a = v * (v + 0.0245786) - 0.000090537;
+            vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081;
+            return a / b;
+          }
+          vec3 ACESFilmic(vec3 c) { // same curve as three's ACESFilmicToneMapping
+            const mat3 inM = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));
+            const mat3 outM = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));
+            c *= 1.0 / 0.6;
+            return clamp(outM * RRTAndODTFit(inM * c), 0.0, 1.0);
+          }
+          vec3 toSRGB(vec3 c) {
+            return mix(pow(c, vec3(0.41666)) * 1.055 - 0.055, c * 12.92, vec3(lessThanEqual(c, vec3(0.0031308))));
+          }
+          float hash12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+          void main() {
+            vec2 dir = vUv - 0.5;
+            float r2 = dot(dir, dir);
+            vec2 off = dir * r2 * uAberration * 4.0;       // zero at centre, grows toward corners
+            vec3 base = vec3(texture2D(baseTexture, vUv + off).r,
+                             texture2D(baseTexture, vUv).g,
+                             texture2D(baseTexture, vUv - off).b);
+            vec3 col = base + texture2D(bloomTexture, vUv).rgb;
+            col = ACESFilmic(col * uExposure);
+            col *= mix(1.0 - uVignette, 1.0, smoothstep(0.85, 0.25, length(dir * vec2(1.0, 0.85))));
+            col = toSRGB(col);
+            col += (hash12(gl_FragCoord.xy + fract(uTime) * 61.0) - 0.5) / 255.0; // dither: kills gradient banding
+            gl_FragColor = vec4(col, 1.0);
+          }`
       }),
       'baseTexture'
     );
-    mixPass.needsSwap = true;
-    this.composer.addPass(mixPass);
-
-    window.addEventListener('resize', () => this.onResize());
+    this.compositePass.needsSwap = true;
+    this.composer.addPass(this.compositePass);
   },
 
   // Positions the camera, at the fixed tilt angle, far enough back that the whole
@@ -689,15 +1671,26 @@ const Render = {
 
     this.camera.position.set(0, distance * Math.cos(this.cameraTilt), distance * Math.sin(this.cameraTilt));
     this.camera.lookAt(0, 0, 0);
+    this.cameraBasePos = (this.cameraBasePos || new THREE.Vector3()).copy(this.camera.position);
+
+    // Fog relative to camera distance: a fixed 60..140 range fogged most of the board on
+    // narrow/tall windows (camera sits much farther back there).
+    if (this.scene && this.scene.fog) {
+      this.scene.fog.near = distance * 0.9;
+      this.scene.fog.far = distance * 2.6;
+    }
   },
 
   onResize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    const pr = Math.min(window.devicePixelRatio || 1, this.MAX_PIXEL_RATIO);
     this.fitCameraToBoard();
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.bloomComposer.setSize(window.innerWidth, window.innerHeight);
-    this.composer.setSize(window.innerWidth, window.innerHeight);
-    this.bloomPass.resolution.set(window.innerWidth, window.innerHeight);
+    this.renderer.setPixelRatio(pr);
+    this.renderer.setSize(w, h);
+    this.bloomComposer.setPixelRatio(pr);
+    this.bloomComposer.setSize(w, h);
+    this.composer.setPixelRatio(pr);
+    this.composer.setSize(w, h);
   },
 
   updateInstance(i) {
@@ -710,32 +1703,47 @@ const Render = {
     this.mesh.setMatrixAt(i, this.dummy.matrix);
     this.tmpColor.setHex(COLOR_OF[s]);
     this.mesh.setColorAt(i, this.tmpColor);
+    this.gridTexData[i * 4] = s;
   },
 
   rebuildAll() {
     for (let i = 0; i < Grid.state.length; i++) this.updateInstance(i);
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    this.gridTex.needsUpdate = true;
     Grid.dirty.length = 0;
+    if (FX.ready) FX.cells.snapAll();
   },
 
   flushDirty() {
     if (Grid.dirty.length === 0) return;
+    if (FX.ready) {
+      for (const i of Grid.dirty) this.gridTexData[i * 4] = Grid.state[i];
+      this.gridTex.needsUpdate = true;
+      FX.cells.applyDirty(Grid.dirty);
+      Grid.dirty.length = 0;
+      return;
+    }
     for (const i of Grid.dirty) this.updateInstance(i);
     Grid.dirty.length = 0;
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    this.gridTex.needsUpdate = true; // 18.8 KB upload, only on frames where cells changed
   },
 
   syncEnemyMeshCount() {
     while (this.enemyMeshes.length < Enemies.balls.length) {
-      const geo = new THREE.SphereGeometry(0.58, 24, 18);
-      const mat = new THREE.MeshStandardMaterial({ color: 0xff4d5e, emissive: 0x4a0009, roughness: 0.35 });
-      const m = new THREE.Mesh(geo, mat);
-      m.castShadow = true;
-      m.layers.enable(1); // bloom layer
-      this.scene.add(m);
-      this.enemyMeshes.push(m);
+      const g = new THREE.Group();
+      const shell = new THREE.Mesh(this.enemyShellGeo, this.enemyShellMat);
+      shell.castShadow = true;
+      shell.layers.enable(1); // bloom layer (must be bloom too: a darkened opaque shell would hide the core's glow)
+      const core = new THREE.Mesh(this.enemyCoreGeo, this.enemyCoreMat);
+      core.layers.enable(1);
+      g.add(core, shell);
+      g.userData.core = core;
+      g.userData.phase = Math.random() * Math.PI * 2;
+      this.scene.add(g);
+      this.enemyMeshes.push(g);
     }
     while (this.enemyMeshes.length > Enemies.balls.length) {
       const m = this.enemyMeshes.pop();
@@ -744,39 +1752,68 @@ const Render = {
   },
 
   updatePlayerMesh() {
+    const t = performance.now() * 0.001;
     const fx = this.cellWorldX(Player.fromCol), fz = this.cellWorldZ(Player.fromRow);
     const tx = this.cellWorldX(Player.col), tz = this.cellWorldZ(Player.row);
-    const t = Player.progress;
-    this.playerMesh.position.x = fx + (tx - fx) * t;
-    this.playerMesh.position.z = fz + (tz - fz) * t;
+    const p = Player.progress;
+    this.playerMesh.position.x = fx + (tx - fx) * p;
+    this.playerMesh.position.z = fz + (tz - fz) * p;
     this.playerMesh.rotation.y = Player.facingY;
+
+    const moving = Game.state === 'PLAYING' && (Player.dir.dx || Player.dir.dy);
+    const boost = Player.speedBoostTimer > 0;
+    const len = (moving ? (boost ? 1.7 : 1.0) : 0.45) * (0.85 + Math.random() * 0.3);
+    this.shipFlame.scale.set(boost ? 1.25 : 1, boost ? 1.25 : 1, len);
+
+    const sh = Player.shieldTimer;
+    this.shieldMesh.visible = sh > 0;
+    if (sh > 0) this.shieldMat.uniforms.uOpacity.value = sh < 1.5 ? (0.35 + 0.65 * (Math.sin(t * 20.0) > 0 ? 1 : 0)) : 1;
   },
 
   updateEnemyMeshes() {
     this.syncEnemyMeshCount();
+    const t = performance.now() * 0.001;
+    const frozen = Enemies.freezeTimer > 0;
+    this.enemyShellMat.color.lerp(frozen ? this.enemyIceShell : this.enemyShellColor, 0.15);
+    this.enemyCoreMat.color.lerp(frozen ? this.enemyIceCore : this.enemyCoreColor, 0.15);
     for (let i = 0; i < Enemies.balls.length; i++) {
       const b = Enemies.balls[i];
-      const m = this.enemyMeshes[i];
-      m.position.set(this.cellWorldX(b.x - 0.5), 0.78, this.cellWorldZ(b.y - 0.5));
+      const g = this.enemyMeshes[i];
+      g.position.set(this.cellWorldX(b.x - 0.5), 0.78, this.cellWorldZ(b.y - 0.5));
+      const s = frozen ? 0.9 : 1.0 + 0.14 * Math.sin(t * 6.0 + g.userData.phase);
+      g.userData.core.scale.setScalar(s);
     }
   },
 
   addPowerupMesh(item) {
     const def = POWERUP_DEFS[item.type];
     const mat = new THREE.MeshStandardMaterial({
-      color: def.color, emissive: def.emissive, roughness: 0.3, metalness: 0.2
+      color: def.color, emissive: def.color, emissiveIntensity: 0.55, roughness: 0.2, metalness: 0.3, envMapIntensity: 1.4
     });
     const m = new THREE.Mesh(this.powerupGeo, mat);
     m.castShadow = true;
     m.layers.enable(1); // bloom layer
     m.position.set(this.cellWorldX(item.col), 0.9, this.cellWorldZ(item.row));
     m.userData.bob = Math.random() * Math.PI * 2;
-    this.scene.add(m);
+    // Floor marker ring (additive, bloom layer so the dark pass never draws it as an occluder).
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(def.color).multiplyScalar(1.5), transparent: true, opacity: 0.8,
+      blending: THREE.AdditiveBlending, depthWrite: false
+    });
+    const ring = new THREE.Mesh(this.powerupRingGeo, ringMat);
+    ring.position.set(m.position.x, 0.08, m.position.z);
+    ring.layers.enable(1);
+    m.userData.ring = ring;
+    m.userData.spawn = 0;
+    m.scale.setScalar(0.001);
+    this.scene.add(m, ring);
     item.mesh = m;
   },
 
   removePowerupMesh(item) {
     if (!item.mesh) return;
+    const ring = item.mesh.userData.ring;
+    if (ring) { this.scene.remove(ring); ring.material.dispose(); }
     this.scene.remove(item.mesh);
     item.mesh.material.dispose();
     item.mesh = null;
@@ -785,21 +1822,47 @@ const Render = {
   animatePowerupMeshes(dt) {
     for (const it of PowerUps.items) {
       if (!it.mesh) continue;
+      const u = it.mesh.userData;
+      if (u.spawn < 1) {
+        u.spawn = Math.min(1, u.spawn + dt / 0.35);
+        it.mesh.scale.setScalar(Math.max(0.001, ease.outBack(u.spawn, 2.5)));
+      }
       it.mesh.userData.bob += dt * 3;
       it.mesh.position.y = 0.9 + Math.sin(it.mesh.userData.bob) * 0.15;
       it.mesh.rotation.y += dt * 1.8;
       it.mesh.rotation.x += dt * 0.9;
+      const ring = it.mesh.userData.ring;
+      if (ring) {
+        const k = (it.mesh.userData.bob * 0.35) % 1;
+        ring.scale.setScalar(0.8 + k * 0.7);
+        ring.material.opacity = 0.9 * (1 - k);
+      }
     }
   },
 
   // Lightweight reusable particle burst system (THREE.Points, single draw call).
   // Bursts are added to the bloom layer so they glow like the ship/balls do.
   initParticles() {
-    this.PARTICLE_MAX = 300;
+    this.PARTICLE_MAX = 800;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.PARTICLE_MAX * 3), 3));
     geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(this.PARTICLE_MAX * 3), 3));
-    const mat = new THREE.PointsMaterial({ size: 0.25, vertexColors: true, transparent: true, depthWrite: false });
+    // Soft round sprite (alphaMap reads .g) instead of hard squares.
+    const S = 32, data = new Uint8Array(S * S * 4);
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const dx = (x + 0.5) / S * 2 - 1, dy = (y + 0.5) / S * 2 - 1;
+      const a = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy));
+      const v = Math.round(255 * a * a);
+      const k = (y * S + x) * 4;
+      data[k] = data[k + 1] = data[k + 2] = v; data[k + 3] = 255;
+    }
+    const sprite = new THREE.DataTexture(data, S, S, THREE.RGBAFormat);
+    sprite.magFilter = THREE.LinearFilter; sprite.minFilter = THREE.LinearFilter;
+    sprite.needsUpdate = true;
+    const mat = new THREE.PointsMaterial({
+      size: 0.42, vertexColors: true, transparent: true, depthWrite: false,
+      alphaMap: sprite, blending: THREE.AdditiveBlending
+    });
     this.particlePoints = new THREE.Points(geo, mat);
     this.particlePoints.frustumCulled = false;
     this.particlePoints.layers.enable(1); // bloom layer
@@ -809,7 +1872,7 @@ const Render = {
 
   spawnBurst(x, y, z, colorHex, count, speed, life) {
     count = count || 20; speed = speed || 3.5; life = life || 0.5;
-    const c = this.tmpColor.clone().setHex(colorHex);
+    const c = this.tmpColor.clone().setHex(colorHex).multiplyScalar(2.0); // HDR so bursts pop through ACES
     for (let i = 0; i < count; i++) {
       if (this.particles.length >= this.PARTICLE_MAX) this.particles.shift();
       const theta = Math.random() * Math.PI * 2;
@@ -826,12 +1889,23 @@ const Render = {
     }
   },
 
+  // Single directed particle (thrusters etc). gravity defaults to 4 like bursts.
+  spawnParticle(x, y, z, vx, vy, vz, life, colorHex, gravity) {
+    if (this.particles.length >= this.PARTICLE_MAX) this.particles.shift();
+    this.tmpColor.setHex(colorHex);
+    this.particles.push({
+      x, y, z, vx, vy, vz, age: 0, life,
+      r: this.tmpColor.r, g: this.tmpColor.g, b: this.tmpColor.b,
+      grav: gravity === undefined ? 4 : gravity
+    });
+  },
+
   updateParticles(dt) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.age += dt;
       if (p.age >= p.life) { this.particles.splice(i, 1); continue; }
-      p.vy -= 4 * dt;
+      p.vy -= (p.grav === undefined ? 4 : p.grav) * dt;
       p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
     }
     const posAttr = this.particlePoints.geometry.attributes.position;
@@ -848,16 +1922,36 @@ const Render = {
   },
 
   render() {
+    const t = performance.now() * 0.001;
+    this.gridUniforms.uTime.value = t; // shared by grid, sky and shield materials
+    this.compositePass.uniforms.uTime.value = t;
+
+    // Bloom pass: dark everything not on layer 1. The shadow map is not needed for this
+    // pass (all non-bloom meshes are unlit black), so skip its re-render — it's the single
+    // most expensive part of a frame with 4704 shadow-casting instances.
+    this.sky.visible = false;
     this.scene.traverse((obj) => this._darkenNonBloomed(obj));
+    const autoShadow = this.renderer.shadowMap.autoUpdate;
+    this.renderer.shadowMap.autoUpdate = false;
     this.bloomComposer.render();
+    this.renderer.shadowMap.autoUpdate = autoShadow;
     this.scene.traverse((obj) => this._restoreMaterial(obj));
+    for (const o of this._bloomHidden) o.visible = true;
+    this._bloomHidden.length = 0;
+    this.sky.visible = true;
+
     this.composer.render();
   },
 
   _darkenNonBloomed(obj) {
-    if (obj.isMesh && this.bloomLayer.test(obj.layers) === false) {
+    if (obj === this.sky || this.bloomLayer.test(obj.layers)) return;
+    if (obj.isMesh) {
       this._bloomMaterialCache.set(obj.uuid, obj.material);
       obj.material = this._bloomDarkMaterial;
+    } else if ((obj.isPoints || obj.isLine || obj.isSprite) && obj.visible) {
+      // A black MeshBasicMaterial can't be swapped onto these; just hide them for the pass.
+      obj.visible = false;
+      this._bloomHidden.push(obj);
     }
   },
 
@@ -869,65 +1963,918 @@ const Render = {
   }
 };
 
-// ===== UI =====
-const UI = {
-  refreshHUD() {
-    document.getElementById('hud-name').textContent = Game.username || '-';
-    document.getElementById('hud-score').textContent = Game.score;
-    document.getElementById('hud-lives').textContent = Game.lives;
-    document.getElementById('hud-level').textContent = Game.level;
-    const pct = Math.min(100, Math.floor(Grid.fillPercent() * 100));
-    document.getElementById('hud-fill').textContent = pct + '%';
-    document.getElementById('fillbar').style.width = pct + '%';
+// ===== FX (motion & feedback — visual only; never mutates gameplay state) =====
+const FX_CFG = {
+  RISE_DUR: 0.30, RISE_WAVE_SPAN: 0.55, RISE_OVERSHOOT: 1.7,
+  TRAIL_POP_DUR: 0.16, SINK_DUR: 0.24,
+  FLASH_CAPTURE: 0xbff6ff, FLASH_DEATH: 0xff4455, FLASH_TRAIL: 0xfff2c0, FLASH_BUILD: 0x9fd8ff,
+  SHAKE_MAX_POS: 1.1, SHAKE_MAX_ROLL: 0.025, SHAKE_DECAY: 1.5,
+  HITSTOP_DEATH: 0.10, SLOWMO_DUR: 0.45, SLOWMO_MIN: 0.2,
+  DANGER_RADIUS: 4.5, DANGER_COLOR: 0xff2a3a,
+  INTRO_DUR: 1.1,
+  CONFETTI: [0x5be0c4, 0xffd166, 0xff6f91, 0x66aaff]
+};
+
+const ease = {
+  outCubic: (t) => 1 - Math.pow(1 - t, 3),
+  inQuad: (t) => t * t,
+  outBack: (t, s = 1.70158) => { const u = t - 1; return 1 + (s + 1) * u * u * u + s * u * u; }
+};
+
+const FX = {
+  ready: false,
+  time: 0,        // FX clock; advances only while not paused
+  timeScale: 1,   // gameplay dt multiplier (hit-stop / slow-mo)
+  hitstop: 0, slowmo: 0, pendingSlow: false,
+  trauma: 0, intro: 1,
+  flashAmt: 0, _lastVig: -1,
+  confettiT: 0, confettiAcc: 0,
+  _v: null, _c1: null, _c2: null,
+
+  init() {
+    this._v = new THREE.Vector3();
+    this._c1 = new THREE.Color();
+    this._c2 = new THREE.Color();
+    this.cells.init();
+    this.initShip();
+    this.initRings();
+    this.initDom();
+    this.ready = true;
   },
-  updateEffectsHUD() {
-    const parts = [];
-    if (Player.speedBoostTimer > 0) parts.push(POWERUP_DEFS.SPEED.icon + ' ' + Math.ceil(Player.speedBoostTimer) + 's');
-    if (Player.shieldTimer > 0) parts.push(POWERUP_DEFS.SHIELD.icon + ' ' + Math.ceil(Player.shieldTimer) + 's');
-    if (Enemies.freezeTimer > 0) parts.push(POWERUP_DEFS.FREEZE.icon + ' ' + Math.ceil(Enemies.freezeTimer) + 's');
-    document.getElementById('hud-effects').innerHTML = parts.map(p => '<span class="fx">' + p + '</span>').join('');
-  },
-  hideOverlays() {
-    document.getElementById('screen-start').classList.add('hidden');
-    document.getElementById('screen-levelcomplete').classList.add('hidden');
-    document.getElementById('screen-gameover').classList.add('hidden');
-    document.getElementById('screen-win').classList.add('hidden');
-    document.getElementById('screen-pause').classList.add('hidden');
-  },
-  showPause() {
-    document.getElementById('screen-pause').classList.remove('hidden');
-  },
-  hidePause() {
-    document.getElementById('screen-pause').classList.add('hidden');
-  },
-  showStart() {
-    document.getElementById('name-input').value = Profile.loadName();
-    document.getElementById('screen-start').classList.remove('hidden');
-  },
-  showLevelComplete(level) {
-    document.getElementById('lc-title').textContent = 'שלב ' + level + ' הושלם!';
-    document.getElementById('lc-score').textContent = Game.score;
-    document.getElementById('screen-levelcomplete').classList.remove('hidden');
-  },
-  fillScoresTable(tbodyId) {
-    const tbody = document.getElementById(tbodyId);
-    tbody.innerHTML = '';
-    for (const row of Profile.topScores(5)) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = '<td>' + escapeHtml(row.name) + '</td><td>' + row.score + '</td><td>' + row.level + '</td>';
-      tbody.appendChild(tr);
+
+  // ---------- clock / hit-stop ----------
+  update(dt) {
+    this.time += dt;
+    if (this.hitstop > 0) {
+      this.hitstop -= dt;
+      this.timeScale = 0;
+      if (this.hitstop <= 0) { this.hitstop = 0; this._onHitstopEnd(); }
+    }
+    if (this.hitstop <= 0) {
+      if (this.slowmo > 0) {
+        this.slowmo += dt / FX_CFG.SLOWMO_DUR;
+        if (this.slowmo >= 1) { this.slowmo = 0; this.timeScale = 1; }
+        else this.timeScale = FX_CFG.SLOWMO_MIN + (1 - FX_CFG.SLOWMO_MIN) * ease.inQuad(this.slowmo);
+      } else {
+        this.timeScale = 1;
+      }
     }
   },
-  showGameOver() {
-    document.getElementById('go-level').textContent = Game.level;
-    document.getElementById('go-score').textContent = Game.score;
-    this.fillScoresTable('go-scores');
-    document.getElementById('screen-gameover').classList.remove('hidden');
+
+  freeze(hold, slowAfter) {
+    this.hitstop = Math.max(this.hitstop, hold);
+    if (slowAfter) this.pendingSlow = true;
   },
+
+  _onHitstopEnd() {
+    const S = this.ship;
+    if (S.deathPos) {
+      const p = S.deathPos;
+      Render.spawnBurst(p.x, p.y, p.z, 0xffd27a, 36, 8, 0.5);
+      Render.spawnBurst(p.x, p.y, p.z, 0xff5566, 24, 5, 0.7);
+      this.ring(p.x, 0.15, p.z, 0xff5566, 8, 0.6);
+      S.deathPos = null;
+      S.hidden = 0.55;
+    }
+    if (this.pendingSlow) { this.slowmo = 0.0001; this.pendingSlow = false; }
+  },
+
+  addTrauma(a) { this.trauma = Math.min(1, this.trauma + a); },
+
+  // Called once per frame after gameplay + Render.update*Mesh, before particles/render.
+  lateUpdate(dt) {
+    this.cells.update();
+    const danger = this.cells.updateDanger();
+    this.cells.updateCelebrate();
+    this.updateShip(dt);
+    this.updateEnemies(dt);
+    this.updateConfetti(dt);
+    this.updateRings(dt);
+    this.applyCamera(dt);
+    this.updatePopups(dt);
+    this.updateBanner(dt);
+    this.updateVignette(dt, danger);
+  },
+
+  // ---------- game event hooks ----------
+  onCapture(col, row, claimed, gained) {
+    if (!this.ready) return;
+    this.cells.pendingOrigin = { c: col, r: row, flash: FX_CFG.FLASH_CAPTURE };
+    let sx = 0, sr = 0, n = 0;
+    for (const i of Grid.dirty) {
+      if (Grid.state[i] !== WALL) continue;
+      const c = i % Grid.cols;
+      sx += c; sr += (i - c) / Grid.cols; n++;
+    }
+    const wx = Render.cellWorldX(n ? sx / n : col), wz = Render.cellWorldZ(n ? sr / n : row);
+    const big = Math.min(1, claimed / 800);
+    this.popup('+' + gained, wx, 1.6, wz, '#5be0c4', Math.round(24 + 20 * big));
+    const pct = Grid.totalFillable ? claimed / Grid.totalFillable * 100 : 0;
+    if (pct >= 1) this.popup('+' + pct.toFixed(pct < 10 ? 1 : 0) + '%', wx, 0.4, wz, '#ffd166', Math.round(15 + 8 * big));
+    this.ring(Render.cellWorldX(col), 1.08, Render.cellWorldZ(row), 0x5be0c4, 3 + 9 * big, 0.5);
+    if (claimed > 40) this.addTrauma(0.12 + 0.4 * big);
+    if (claimed > 500) this.freeze(0.05, false);
+  },
+
+  onDeath() {
+    if (!this.ready) return;
+    const p = Render.playerMesh.position;
+    this.ship.deathPos = p.clone();
+    this.cells.pendingOrigin = { c: Player.col, r: Player.row, flash: FX_CFG.FLASH_DEATH };
+    this.popup('-1 ❤', p.x, 2.2, p.z, '#ff6b6b', 26);
+    this.addTrauma(0.7);
+    this.flashAmt = 0.7;
+    this.freeze(FX_CFG.HITSTOP_DEATH, true);
+  },
+
+  onPowerup(it) {
+    if (!this.ready) return;
+    const def = POWERUP_DEFS[it.type];
+    const x = Render.cellWorldX(it.col), z = Render.cellWorldZ(it.row);
+    this.popup(def.icon + ' ' + def.label, x, 1.8, z, '#' + def.color.toString(16).padStart(6, '0'), 22);
+    this.ring(x, 1.05, z, def.color, 3.5, 0.45);
+  },
+
+  onLevelStart(level) {
+    if (!this.ready) return;
+    this.hitstop = 0; this.slowmo = 0; this.pendingSlow = false; this.timeScale = 1;
+    this.trauma = 0; this.flashAmt = 0; this.confettiT = 0;
+    this.cells.celebrateStart = -1;
+    this.cells.buildWave(Player.startCol, Player.startRow);
+    const S = this.ship;
+    S.deathPos = null; S.hidden = 0; S.pop = 0; S.yaw = Player.facingY; S.lastDir = '0,0';
+    for (const p of this.pops) p.el.remove();
+    this.pops.length = 0;
+    this.intro = 0;
+    this.showBanner('שלב ' + level, level >= 3 ? 'מכשולים בשטח · כבשו 80%' : 'כבשו 80% מהשטח');
+  },
+
+  onLevelComplete(bonus) {
+    if (!this.ready) return;
+    this.cells.celebrate(Player.col, Player.row, this.time + 0.45);
+    this.popup('+' + bonus, 0, 2.5, 0, '#ffd166', 40);
+    this.addTrauma(0.3);
+    this.confettiT = 1.3; this.confettiAcc = 0;
+  },
+
+  // ---------- grid cell animation (rise / pop / sink / celebrate / danger) ----------
+  cells: {
+    n: 0, active: [], pendingOrigin: null,
+    celebrateStart: -1, celebrateOrigin: null,
+
+    init() {
+      const n = Grid.cols * Grid.rows;
+      this.n = n;
+      this.dispH = new Float32Array(n);
+      this.fromH = new Float32Array(n);
+      this.start = new Float32Array(n);
+      this.dur = new Float32Array(n);
+      this.kind = new Uint8Array(n);      // 1 rise, 2 trail pop, 3 sink
+      this.flash = new Uint32Array(n);
+      this.shownState = new Uint8Array(n);
+      this.isActive = new Uint8Array(n);
+      this._col = new THREE.Color();
+      this._tmp = new THREE.Color();
+      this.snapAll();
+    },
+
+    clearActive() {
+      for (const i of this.active) this.isActive[i] = 0;
+      this.active.length = 0;
+    },
+    activate(i) {
+      if (!this.isActive[i]) { this.isActive[i] = 1; this.active.push(i); }
+    },
+
+    // Mirrors Render.rebuildAll: displayed heights = logical heights, no animation.
+    snapAll() {
+      this.clearActive();
+      for (let i = 0; i < this.n; i++) {
+        const s = Grid.state[i];
+        this.dispH[i] = HEIGHT_OF[s];
+        this.shownState[i] = s;
+      }
+    },
+
+    writeCell(i, h) {
+      h = Math.max(0.02, h); // instanced normals divide by scale^2 — never 0
+      const a = Render.mesh.instanceMatrix.array, o = i * 16;
+      const c = i % Grid.cols, r = (i - c) / Grid.cols;
+      a[o] = 1; a[o + 1] = 0; a[o + 2] = 0; a[o + 3] = 0;
+      a[o + 4] = 0; a[o + 5] = h; a[o + 6] = 0; a[o + 7] = 0;
+      a[o + 8] = 0; a[o + 9] = 0; a[o + 10] = 1; a[o + 11] = 0;
+      a[o + 12] = Render.cellWorldX(c); a[o + 13] = h / 2; a[o + 14] = Render.cellWorldZ(r); a[o + 15] = 1;
+    },
+    writeColor(i, color) {
+      const a = Render.mesh.instanceColor.array, o = i * 3;
+      a[o] = color.r; a[o + 1] = color.g; a[o + 2] = color.b;
+    },
+
+    // Replaces the instant per-cell pop of Render.flushDirty.
+    applyDirty(list) {
+      const o = this.pendingOrigin;
+      this.pendingOrigin = null;
+      let maxD = 1;
+      if (o) {
+        for (const i of list) {
+          const c = i % Grid.cols, r = (i - c) / Grid.cols;
+          const d = Math.hypot(c - o.c, r - o.r);
+          if (d > maxD) maxD = d;
+        }
+      }
+      const k = Math.min(0.02, FX_CFG.RISE_WAVE_SPAN / maxD);
+      const now = FX.time;
+      for (const i of list) {
+        const s = Grid.state[i];
+        const old = this.shownState[i];
+        if (s === old && !this.isActive[i]) continue;
+        this.shownState[i] = s;
+        let delay = 0;
+        // The solidified trail itself becomes wall instantly (no visual lie about
+        // where it is safe); the enclosed area ripples outward from the closing point.
+        if (o && !(s === WALL && old === TRAIL)) {
+          const c = i % Grid.cols, r = (i - c) / Grid.cols;
+          delay = Math.hypot(c - o.c, r - o.r) * k + Math.random() * 0.03;
+        }
+        this.fromH[i] = this.dispH[i];
+        this.start[i] = now + delay;
+        if (s === WALL) { this.kind[i] = 1; this.dur[i] = FX_CFG.RISE_DUR; this.flash[i] = o ? o.flash : FX_CFG.FLASH_CAPTURE; }
+        else if (s === TRAIL) { this.kind[i] = 2; this.dur[i] = FX_CFG.TRAIL_POP_DUR; this.flash[i] = FX_CFG.FLASH_TRAIL; }
+        else { this.kind[i] = 3; this.dur[i] = FX_CFG.SINK_DUR; this.flash[i] = o ? o.flash : COLOR_OF[EMPTY]; }
+        this.activate(i);
+      }
+    },
+
+    update() {
+      if (this.active.length === 0) return;
+      const now = FX.time, col = this._col, fl = this._tmp;
+      let wrote = false;
+      for (let a = this.active.length - 1; a >= 0; a--) {
+        const i = this.active[a];
+        const raw = (now - this.start[i]) / this.dur[i];
+        if (raw < 0) continue; // still waiting for the wave front; old visuals stay
+        const t = Math.min(1, raw);
+        const s = Grid.state[i];
+        const from = this.fromH[i], to = HEIGHT_OF[s];
+        let h, f;
+        if (this.kind[i] === 1) { h = from + (to - from) * ease.outBack(t, FX_CFG.RISE_OVERSHOOT); f = (1 - t) * (1 - t); }
+        else if (this.kind[i] === 2) { h = from + (to - from) * ease.outBack(t, 2.2); f = (1 - t) * 0.8; }
+        else { h = from + (to - from) * ease.outCubic(t); f = 1 - t; }
+        this.dispH[i] = h;
+        this.writeCell(i, h);
+        col.setHex(COLOR_OF[s]);
+        if (f > 0) col.lerp(fl.setHex(this.flash[i]), f);
+        this.writeColor(i, col);
+        wrote = true;
+        if (t >= 1) {
+          this.dispH[i] = to;
+          this.isActive[i] = 0;
+          const last = this.active.pop();
+          if (a < this.active.length) this.active[a] = last;
+        }
+      }
+      if (wrote) {
+        Render.mesh.instanceMatrix.needsUpdate = true;
+        Render.mesh.instanceColor.needsUpdate = true;
+      }
+    },
+
+    // Level start: every wall grows out of the floor in a wave from the ship's spawn.
+    buildWave(oc, orow) {
+      this.clearActive();
+      const now = FX.time;
+      let maxD = 1;
+      for (let i = 0; i < this.n; i++) {
+        if (Grid.state[i] !== WALL) continue;
+        const c = i % Grid.cols, r = (i - c) / Grid.cols;
+        maxD = Math.max(maxD, Math.hypot(c - oc, r - orow));
+      }
+      const k = 0.7 / maxD;
+      const floorCol = this._col.setHex(COLOR_OF[EMPTY]);
+      for (let i = 0; i < this.n; i++) {
+        const s = Grid.state[i];
+        this.shownState[i] = s;
+        this.dispH[i] = HEIGHT_OF[s];
+        if (s !== WALL) continue;
+        const c = i % Grid.cols, r = (i - c) / Grid.cols;
+        this.fromH[i] = HEIGHT_OF[EMPTY];
+        this.dispH[i] = HEIGHT_OF[EMPTY];
+        this.start[i] = now + 0.15 + Math.hypot(c - oc, r - orow) * k + Math.random() * 0.04;
+        this.dur[i] = 0.38;
+        this.kind[i] = 1;
+        this.flash[i] = FX_CFG.FLASH_BUILD;
+        this.writeCell(i, HEIGHT_OF[EMPTY]);
+        this.writeColor(i, floorCol);
+        this.activate(i);
+      }
+      Render.mesh.instanceMatrix.needsUpdate = true;
+      Render.mesh.instanceColor.needsUpdate = true;
+    },
+
+    celebrate(c, r, startAt) {
+      this.celebrateStart = startAt;
+      this.celebrateOrigin = { c, r };
+    },
+
+    updateCelebrate() {
+      if (this.celebrateStart < 0) return;
+      const t = FX.time - this.celebrateStart;
+      if (t < 0) return;
+      const DUR = 1.4, SPEED = 90, WIDTH = 7;
+      const done = t >= DUR;
+      const o = this.celebrateOrigin, cols = Grid.cols;
+      const col = this._col, hi = this._tmp.setHex(0xaef6ff);
+      for (let i = 0; i < this.n; i++) {
+        if (Grid.state[i] !== WALL || this.isActive[i]) continue;
+        const c = i % cols, r = (i - c) / cols;
+        let bump = 0;
+        if (!done) {
+          const d = Math.hypot(c - o.c, r - o.r);
+          const x1 = (t * SPEED - d) / WIDTH;
+          const x2 = (t * SPEED - 28 - d) / WIDTH;
+          if (x1 > 0 && x1 < 1) bump += Math.sin(x1 * Math.PI);
+          if (x2 > 0 && x2 < 1) bump += 0.55 * Math.sin(x2 * Math.PI);
+        }
+        this.writeCell(i, HEIGHT_OF[WALL] * (1 + 0.5 * bump));
+        col.setHex(COLOR_OF[WALL]);
+        if (bump > 0) col.lerp(hi, Math.min(1, bump * 0.85));
+        this.writeColor(i, col);
+      }
+      if (done) this.celebrateStart = -1;
+      Render.mesh.instanceMatrix.needsUpdate = true;
+      Render.mesh.instanceColor.needsUpdate = true;
+    },
+
+    // Trail cells near a ball pulse red; returns max danger (0..1) for the vignette.
+    updateDanger() {
+      const path = Player.trailPath;
+      if (!path.length || !Enemies.balls.length || Game.state !== 'PLAYING' && Game.state !== 'PAUSED') return 0;
+      const col = this._col, red = this._tmp.setHex(FX_CFG.DANGER_COLOR);
+      const pulse = 0.6 + 0.4 * Math.sin(FX.time * 20);
+      const frozenMul = Enemies.freezeTimer > 0 ? 0.3 : 1;
+      let maxDanger = 0;
+      for (const i of path) {
+        if (Grid.state[i] !== TRAIL) continue;
+        const c = i % Grid.cols, r = (i - c) / Grid.cols;
+        const cx = c + 0.5, cy = r + 0.5;
+        let dmin = Infinity;
+        for (const b of Enemies.balls) {
+          const d = Math.hypot(b.x - cx, b.y - cy);
+          if (d < dmin) dmin = d;
+        }
+        const danger = THREE.MathUtils.clamp(1 - (dmin - 0.8) / FX_CFG.DANGER_RADIUS, 0, 1) * frozenMul;
+        if (danger <= 0 && this.isActive[i]) continue; // let the pop animation own its color
+        if (danger > maxDanger) maxDanger = danger;
+        col.setHex(COLOR_OF[TRAIL]);
+        if (danger > 0) col.lerp(red, danger * danger * pulse);
+        this.writeColor(i, col);
+      }
+      Render.mesh.instanceColor.needsUpdate = true;
+      return maxDanger;
+    }
+  },
+
+  // ---------- ship: smooth yaw, bank, lean, turn squash, bob, thrusters, shield ----------
+  initShip() {
+    const m = Render.playerMesh;
+    m.rotation.order = 'YXZ';
+    this.ship = {
+      yaw: Player.facingY, bank: 0, lean: 0, turnKick: 0, lastDir: '0,0',
+      hidden: 0, pop: 1, emitAcc: 0, deathPos: null,
+      baseScale: m.scale.clone(), baseY: m.position.y
+    };
+  },
+
+  updateShip(dt) {
+    const m = Render.playerMesh, S = this.ship;
+    const gdt = dt * this.timeScale;
+    const moving = Game.state === 'PLAYING' && !!(Player.dir.dx || Player.dir.dy);
+    const boosted = Player.speedBoostTimer > 0;
+
+    let d = Player.facingY - S.yaw;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    const step = d * (1 - Math.exp(-gdt * 22));
+    S.yaw += step;
+    const yawVel = gdt > 0 ? step / gdt : 0;
+    S.bank += (THREE.MathUtils.clamp(-yawVel * 0.05, -0.7, 0.7) - S.bank) * (1 - Math.exp(-gdt * 14));
+    S.lean += ((moving ? (boosted ? 0.2 : 0.1) : 0) - S.lean) * (1 - Math.exp(-gdt * 8));
+
+    const dirKey = Player.dir.dx + ',' + Player.dir.dy;
+    if (dirKey !== S.lastDir) {
+      if (moving && S.lastDir !== '0,0') S.turnKick = 1;
+      S.lastDir = dirKey;
+    }
+    S.turnKick = Math.max(0, S.turnKick - gdt * 5);
+
+    // Impact frame: ship frozen & jittering at the death spot until hit-stop ends.
+    if (S.deathPos) {
+      m.position.copy(S.deathPos);
+      m.visible = true;
+      const f = 1 + 0.25 * Math.sin(this.time * 90);
+      m.scale.set(S.baseScale.x * f, S.baseScale.y * f, S.baseScale.z * f);
+      m.rotation.set(S.lean, S.yaw, S.bank);
+      return;
+    }
+
+    if (S.hidden > 0) {
+      S.hidden -= dt;
+      if (S.hidden <= 0) {
+        S.pop = 0;
+        if (Game.state === 'PLAYING' || Game.state === 'PAUSED') {
+          this.ring(m.position.x, 1.05, m.position.z, 0xffee55, 3, 0.45);
+          Render.spawnBurst(m.position.x, m.position.y, m.position.z, 0xffee55, 16, 3, 0.4);
+        }
+      }
+    }
+    S.pop = Math.min(1, S.pop + dt / 0.4);
+    const popS = ease.outBack(S.pop, 2.6);
+    const show = S.hidden <= 0 && Game.state !== 'GAME_OVER' && popS > 0.01;
+    m.visible = show;
+    const k = S.turnKick * S.turnKick;
+    const stretch = boosted && moving ? 1.2 : 1;
+    const ps = Math.max(0.01, popS);
+    m.scale.set(
+      S.baseScale.x * ps * (1 + 0.25 * k),
+      S.baseScale.y * ps * (1 - 0.1 * k),
+      S.baseScale.z * ps * stretch * (1 - 0.2 * k)
+    );
+    m.position.y = S.baseY + Math.sin(this.time * 3.2) * 0.07;
+    m.rotation.set(S.lean, S.yaw, S.bank);
+
+    // Thruster stream (tip of the cone points +Z locally → forward = (sin yaw, 0, cos yaw)).
+    if (moving && show && this.timeScale > 0) {
+      S.emitAcc += gdt * (boosted ? 80 : 40);
+      const fx = Math.sin(S.yaw), fz = Math.cos(S.yaw);
+      const color = boosted ? POWERUP_DEFS.SPEED.color : 0xff9a3c;
+      const p = m.position;
+      while (S.emitAcc >= 1) {
+        S.emitAcc -= 1;
+        const sp = 2.5 + Math.random() * 1.5;
+        Render.spawnParticle(
+          p.x - fx * 0.85 + (Math.random() - 0.5) * 0.25,
+          p.y + (Math.random() - 0.5) * 0.2,
+          p.z - fz * 0.85 + (Math.random() - 0.5) * 0.25,
+          -fx * sp + (Math.random() - 0.5) * 0.8,
+          (Math.random() - 0.5) * 0.6 + 0.3,
+          -fz * sp + (Math.random() - 0.5) * 0.8,
+          0.22 + Math.random() * 0.18, color, 0
+        );
+      }
+    } else {
+      S.emitAcc = 0;
+    }
+  },
+
+  // ---------- enemies: squash & stretch on bounce, impact sparks, freeze tint ----------
+  updateEnemies(dt) {
+    const frozen = Enemies.freezeTimer > 0;
+    const icy = this._c1.setHex(POWERUP_DEFS.FREEZE.color);
+    const icyEm = this._c2.setHex(POWERUP_DEFS.FREEZE.emissive);
+    const sq = (age) => age > 0.5 ? 0 : Math.exp(-age * 12) * Math.cos(age * 38);
+    for (let i = 0; i < Enemies.balls.length; i++) {
+      const b = Enemies.balls[i], m = Render.enemyMeshes[i];
+      if (!m) continue;
+      const u = m.userData;
+      const tintable = m.material && m.material.color; // model/material may be swapped by the graphics pass
+      if (tintable && !u.baseColor) {
+        u.baseColor = m.material.color.clone();
+        if (m.material.emissive) u.baseEmissive = m.material.emissive.clone();
+      }
+      if (u.ball !== b) { // new ball object (new level / respawn) — don't treat as a bounce
+        u.ball = b; u.svx = Math.sign(b.vx); u.svy = Math.sign(b.vy);
+        u.bx = 9; u.by = 9; u.frost = 0;
+      }
+      const sx = Math.sign(b.vx), sy = Math.sign(b.vy);
+      if (sx !== u.svx) {
+        u.bx = 0;
+        Render.spawnBurst(m.position.x + u.svx * 0.55, m.position.y, m.position.z, 0xffb3bd, 6, 2.2, 0.22);
+        u.svx = sx;
+      }
+      if (sy !== u.svy) {
+        u.by = 0;
+        Render.spawnBurst(m.position.x, m.position.y, m.position.z + u.svy * 0.55, 0xffb3bd, 6, 2.2, 0.22);
+        u.svy = sy;
+      }
+      u.bx += dt * this.timeScale; u.by += dt * this.timeScale;
+      const qx = sq(u.bx), qz = sq(u.by);
+      m.scale.set(1 - 0.32 * qx + 0.16 * qz, 1 + 0.14 * (qx + qz), 1 - 0.32 * qz + 0.16 * qx);
+
+      u.frost += ((frozen ? 1 : 0) - u.frost) * (1 - Math.exp(-dt * 8));
+      let f = u.frost;
+      if (frozen && Enemies.freezeTimer < 1.2 && Math.sin(this.time * 22) < 0) f *= 0.4;
+      if (tintable && u.baseColor) {
+        m.material.color.copy(u.baseColor).lerp(icy, f);
+        if (u.baseEmissive) m.material.emissive.copy(u.baseEmissive).lerp(icyEm, f);
+      }
+    }
+  },
+
+  updateConfetti(dt) {
+    if (this.confettiT <= 0) return;
+    this.confettiT -= dt;
+    this.confettiAcc += dt;
+    while (this.confettiAcc > 0.07) {
+      this.confettiAcc -= 0.07;
+      for (let tries = 0; tries < 20; tries++) {
+        const i = Math.floor(Math.random() * Grid.state.length);
+        if (Grid.state[i] !== WALL) continue;
+        const c = i % Grid.cols, r = (i - c) / Grid.cols;
+        const color = FX_CFG.CONFETTI[Math.floor(Math.random() * FX_CFG.CONFETTI.length)];
+        Render.spawnBurst(Render.cellWorldX(c), 1.2, Render.cellWorldZ(r), color, 12, 5, 0.8);
+        break;
+      }
+    }
+  },
+
+  // ---------- shockwave rings (pooled) ----------
+  initRings() {
+    this.rings = [];
+    const geo = new THREE.RingGeometry(0.85, 1.0, 48);
+    geo.rotateX(-Math.PI / 2);
+    for (let k = 0; k < 6; k++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0, depthWrite: false,
+        blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+      });
+      const ring = new THREE.Mesh(geo, mat);
+      ring.layers.enable(1); // bloom layer
+      ring.visible = false;
+      ring.userData = { age: 0, life: 1, maxR: 1 };
+      Render.scene.add(ring);
+      this.rings.push(ring);
+    }
+  },
+
+  ring(x, y, z, colorHex, maxR, life) {
+    let pick = this.rings.find(r => !r.visible);
+    if (!pick) pick = this.rings.reduce((a, b) => (a.userData.age / a.userData.life > b.userData.age / b.userData.life ? a : b));
+    pick.position.set(x, y, z);
+    pick.material.color.setHex(colorHex);
+    pick.userData.age = 0; pick.userData.life = life; pick.userData.maxR = maxR;
+    pick.scale.set(0.3, 1, 0.3);
+    pick.visible = true;
+  },
+
+  updateRings(dt) {
+    for (const r of this.rings) {
+      if (!r.visible) continue;
+      const u = r.userData;
+      u.age += dt;
+      const t = u.age / u.life;
+      if (t >= 1) { r.visible = false; continue; }
+      const s = 0.3 + u.maxR * ease.outCubic(t);
+      r.scale.set(s, 1, s);
+      r.material.opacity = (1 - t) * (1 - t);
+    }
+  },
+
+  // ---------- camera: intro sweep + trauma shake, layered on top of fitCameraToBoard ----------
+  applyCamera(dt) {
+    const cam = Render.camera, base = Render.cameraBasePos;
+    if (!base) return;
+    this.trauma = Math.max(0, this.trauma - FX_CFG.SHAKE_DECAY * dt);
+    let x = base.x, y = base.y, z = base.z;
+    if (this.intro < 1) {
+      this.intro = Math.min(1, this.intro + dt / FX_CFG.INTRO_DUR);
+      const inv = 1 - ease.outCubic(this.intro);
+      const ang = -0.45 * inv, cs = Math.cos(ang), sn = Math.sin(ang), dist = 1 + 0.4 * inv;
+      const nx = x * cs + z * sn, nz = -x * sn + z * cs;
+      x = nx * dist; y = y * (dist + 0.15 * inv); z = nz * dist;
+    }
+    const sh = this.trauma * this.trauma, t = this.time;
+    const n = (f, s) => Math.sin(t * f + s) * 0.6 + Math.sin(t * f * 2.13 + s * 1.7) * 0.4;
+    const ox = FX_CFG.SHAKE_MAX_POS * sh * n(31, 1.3);
+    const oy = FX_CFG.SHAKE_MAX_POS * sh * n(29, 4.1) * 0.6;
+    const oz = FX_CFG.SHAKE_MAX_POS * sh * n(37, 7.7);
+    cam.position.set(x + ox, y + oy, z + oz);
+    cam.lookAt(ox * 0.4, 0, oz * 0.4);
+    if (sh > 0) cam.rotateZ(FX_CFG.SHAKE_MAX_ROLL * sh * n(23, 2.9));
+    cam.updateMatrixWorld();
+  },
+
+  // ---------- DOM: score popups, level banner, danger/death vignette ----------
+  initDom() {
+    this.popLayer = document.createElement('div');
+    this.popLayer.id = 'fx-layer';
+    document.body.appendChild(this.popLayer);
+    this.pops = [];
+    this.banner = document.createElement('div');
+    this.banner.id = 'fx-banner';
+    this.banner.innerHTML = '<div class="fx-banner-title"></div><div class="fx-banner-sub"></div>';
+    document.body.appendChild(this.banner);
+    this.bannerT = -1;
+    this.vignette = document.createElement('div');
+    this.vignette.id = 'fx-vignette';
+    document.body.appendChild(this.vignette);
+  },
+
+  popup(text, wx, wy, wz, colorCss, sizePx) {
+    const el = document.createElement('div');
+    el.className = 'fx-pop';
+    el.dir = /[\u0590-\u05FF]/.test(text) ? 'rtl' : 'ltr';
+    el.textContent = text;
+    el.style.color = colorCss;
+    el.style.fontSize = sizePx + 'px';
+    el.style.opacity = '0';
+    this.popLayer.appendChild(el);
+    this.pops.push({ el, x: wx, y: wy, z: wz, age: 0, life: 1.2 });
+  },
+
+  updatePopups(dt) {
+    const v = this._v, w = window.innerWidth, h = window.innerHeight;
+    for (let k = this.pops.length - 1; k >= 0; k--) {
+      const p = this.pops[k];
+      p.age += dt;
+      const t = p.age / p.life;
+      if (t >= 1) { p.el.remove(); this.pops.splice(k, 1); continue; }
+      v.set(p.x, p.y + ease.outCubic(t) * 2.2, p.z).project(Render.camera);
+      const sx = (v.x * 0.5 + 0.5) * w, sy = (-v.y * 0.5 + 0.5) * h;
+      const sc = t < 0.12 ? ease.outBack(t / 0.12, 3) : 1;
+      const op = t > 0.6 ? 1 - (t - 0.6) / 0.4 : 1;
+      p.el.style.transform = `translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px) translate(-50%, -50%) scale(${sc.toFixed(3)})`;
+      p.el.style.opacity = op.toFixed(3);
+    }
+  },
+
+  showBanner(title, sub) {
+    this.banner.querySelector('.fx-banner-title').textContent = title;
+    this.banner.querySelector('.fx-banner-sub').textContent = sub;
+    this.bannerT = 0;
+  },
+
+  updateBanner(dt) {
+    if (this.bannerT < 0) return;
+    this.bannerT += dt;
+    const t = this.bannerT, D = 1.9, el = this.banner;
+    if (t >= D) { el.style.opacity = '0'; this.bannerT = -1; return; }
+    let s, o;
+    if (t < 0.4) { const e = t / 0.4; s = 0.55 + 0.45 * ease.outBack(e, 2.2); o = Math.min(1, e * 1.6); }
+    else if (t < 1.45) { s = 1 + (t - 0.4) * 0.03; o = 1; }
+    else { const e = (t - 1.45) / (D - 1.45); s = 1.03 + e * 0.12; o = 1 - ease.inQuad(e); }
+    el.style.opacity = o.toFixed(3);
+    el.style.transform = `translate(-50%, -50%) scale(${s.toFixed(3)})`;
+  },
+
+  updateVignette(dt, danger) {
+    this.flashAmt = Math.max(0, this.flashAmt - dt * 2.2);
+    const pulse = 0.5 + 0.5 * Math.sin(this.time * 14);
+    const d = Game.state === 'PLAYING' ? danger * (0.25 + 0.2 * pulse) : 0;
+    const op = Math.max(this.flashAmt, d);
+    if (Math.abs(op - this._lastVig) > 0.01) {
+      this.vignette.style.opacity = op.toFixed(3);
+      this._lastVig = op;
+    }
+  }
+};
+
+// ===== UI =====
+const UI = {
+  _prev: { score: null, lives: null, level: null },
+  _fxChips: {},
+  _countToken: 0,
+  _screens: ['screen-start', 'screen-levelcomplete', 'screen-gameover', 'screen-win', 'screen-pause'],
+  _fxDefs: [
+    { key: 'SPEED',  cls: 'fx-speed',  get: () => Player.speedBoostTimer, total: () => CONFIG.SPEED_BOOST_DURATION },
+    { key: 'SHIELD', cls: 'fx-shield', get: () => Player.shieldTimer,     total: () => CONFIG.SHIELD_DURATION },
+    { key: 'FREEZE', cls: 'fx-freeze', get: () => Enemies.freezeTimer,    total: () => CONFIG.FREEZE_DURATION }
+  ],
+
+  _el(id) { return document.getElementById(id); },
+
+  _fmt(n) { return Math.round(Number(n) || 0).toLocaleString('en-US'); },
+
+  _reducedMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  },
+
+  // Restart a one-shot CSS animation class (only called on discrete events, never per frame).
+  _replayClass(el, cls) {
+    if (!el) return;
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+  },
+
+  _heartSvg(on) {
+    return '<svg class="heart' + (on ? '' : ' off') + '" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-heart"/></svg>';
+  },
+
+  _renderLives(lives) {
+    const el = this._el('hud-lives');
+    const MAX_ICONS = 5;
+    let html = '';
+    if (lives > MAX_ICONS) {
+      html = this._heartSvg(true) + '<span class="lives-extra">×' + lives + '</span>';
+    } else {
+      const slots = Math.max(CONFIG.START_LIVES, lives);
+      for (let i = 0; i < slots; i++) html += this._heartSvg(i < lives);
+    }
+    el.innerHTML = html;
+    el.setAttribute('aria-label', 'חיים: ' + lives);
+  },
+
+  refreshHUD() {
+    const prev = this._prev;
+    this._el('hud-name').textContent = Game.username || '-';
+
+    if (prev.score !== Game.score) {
+      this._el('hud-score').textContent = this._fmt(Game.score);
+      if (prev.score !== null && Game.score > prev.score) this._replayClass(this._el('chip-score'), 'bump');
+      prev.score = Game.score;
+    }
+
+    if (prev.lives !== Game.lives) {
+      this._renderLives(Game.lives);
+      if (prev.lives !== null) {
+        if (Game.lives < prev.lives) {
+          this._replayClass(this._el('chip-lives'), 'hit');
+        } else if (Game.lives > prev.lives) {
+          const on = this._el('hud-lives').querySelectorAll('.heart:not(.off)');
+          if (on.length) this._replayClass(on[on.length - 1], 'gain');
+        }
+      }
+      prev.lives = Game.lives;
+    }
+
+    if (prev.level !== Game.level) {
+      this._el('hud-level').textContent = Game.level;
+      this._el('chip-level').style.setProperty('--lvl', Math.min(1, Game.level / CONFIG.MAX_LEVEL).toFixed(3));
+      if (prev.level !== null && Game.level > prev.level) this._replayClass(this._el('chip-level'), 'bump');
+      prev.level = Game.level;
+    }
+    this._el('hud-maxlevel').textContent = CONFIG.MAX_LEVEL;
+
+    const pct = Math.min(100, Math.floor(Grid.fillPercent() * 100));
+    const target = Math.round(CONFIG.FILL_TARGET * 100);
+    const wrap = this._el('fillbar-wrap');
+    const row = this._el('fillrow');
+    this._el('hud-fill').textContent = pct + '%';
+    this._el('fillbar').style.width = pct + '%';
+    this._el('fill-goal').textContent = '/' + target + '%';
+    wrap.style.setProperty('--target', target + '%');
+    wrap.setAttribute('aria-valuenow', pct);
+    row.classList.toggle('near', pct >= target - 10 && pct < target);
+    row.classList.toggle('reached', pct >= target);
+  },
+
+  // Called every PLAYING frame: chips are created once and then only mutated (no per-frame innerHTML).
+  updateEffectsHUD() {
+    const host = this._el('hud-effects');
+    for (const d of this._fxDefs) {
+      const t = d.get();
+      let chip = this._fxChips[d.key];
+      if (t > 0) {
+        const p = Math.max(0, Math.min(1, t / d.total()));
+        if (!chip) {
+          const def = POWERUP_DEFS[d.key];
+          chip = document.createElement('span');
+          chip.className = 'fx ' + d.cls;
+          chip.title = def.label;
+          chip.innerHTML =
+            '<span class="fx-ring"><span class="fx-ico">' + def.icon + '</span></span>' +
+            '<span class="fx-label">' + def.label + '</span>' +
+            '<b class="fx-time"></b>';
+          chip._time = chip.querySelector('.fx-time');
+          chip._shown = -1;
+          chip._p = p;
+          host.appendChild(chip);
+          this._fxChips[d.key] = chip;
+        } else if (p > chip._p + 0.2) {
+          this._replayClass(chip, 'bump'); // same power-up picked up again -> timer refilled
+        }
+        chip._p = p;
+        chip.style.setProperty('--p', p.toFixed(3));
+        const secs = Math.ceil(t);
+        if (secs !== chip._shown) { chip._time.textContent = secs; chip._shown = secs; }
+        const ending = t <= 1.5;
+        if (ending !== chip.classList.contains('ending')) chip.classList.toggle('ending', ending);
+      } else if (chip) {
+        chip.remove();
+        delete this._fxChips[d.key];
+      }
+    }
+  },
+
+  _show(id, focusId) {
+    const s = this._el(id);
+    s.classList.remove('hidden');
+    if (focusId) {
+      const f = this._el(focusId);
+      if (f) f.focus({ preventScroll: true });
+    }
+  },
+
+  _hide(id) {
+    const s = this._el(id);
+    // Screens stay in the layout while fading out; drop focus so Enter can't re-trigger a fading button.
+    if (document.activeElement && s.contains(document.activeElement)) document.activeElement.blur();
+    s.classList.add('hidden');
+  },
+
+  hideOverlays() {
+    for (const id of this._screens) this._hide(id);
+  },
+
+  showPause() {
+    this._show('screen-pause', 'resume-btn');
+  },
+
+  hidePause() {
+    this._hide('screen-pause');
+  },
+
+  showStart() {
+    this._el('name-input').value = Profile.loadName();
+    const best = Profile.topScores(1)[0];
+    const bestEl = this._el('start-best');
+    if (best) {
+      this._el('start-best-score').textContent = this._fmt(best.score);
+      this._el('start-best-name').textContent = best.name;
+      bestEl.classList.remove('hidden');
+    } else {
+      bestEl.classList.add('hidden');
+    }
+    this._show('screen-start');
+  },
+
+  _countUp(el, from, to, ms, delay) {
+    const token = ++this._countToken;
+    if (this._reducedMotion() || to <= from) { el.textContent = this._fmt(to); return; }
+    el.textContent = this._fmt(from);
+    const t0 = performance.now() + (delay || 0);
+    const step = (now) => {
+      if (token !== this._countToken) return;
+      const k = Math.max(0, Math.min(1, (now - t0) / ms));
+      const eased = 1 - Math.pow(1 - k, 3);
+      el.textContent = this._fmt(from + (to - from) * eased);
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  },
+
+  showLevelComplete(level) {
+    this._el('lc-title').textContent = 'שלב ' + level + ' הושלם!';
+    // Mirrors the bonus formula in Game.onLevelComplete (already added to Game.score at this point).
+    const bonus = 50 * Game.lives + 1000 * level;
+    this._el('lc-bonus').textContent = '+' + this._fmt(bonus);
+    this._el('lc-fill').textContent = Math.min(100, Math.floor(Grid.fillPercent() * 100)) + '%';
+    this._countUp(this._el('lc-score'), Math.max(0, Game.score - bonus), Game.score, 900, 250);
+    this._show('screen-levelcomplete');
+  },
+
+  fillScoresTable(tbodyId, runLevel) {
+    const tbody = this._el(tbodyId);
+    const TOP = 5;
+    const all = Profile.topScores(20);
+
+    // The run just recorded = newest entry matching this player's name + score.
+    let meIdx = -1, latest = '';
+    all.forEach((r, i) => {
+      if (r.name === Game.username && r.score === Game.score && r.date && r.date > latest) {
+        latest = r.date; meIdx = i;
+      }
+    });
+
+    const rowHtml = (r, rank, isMe) => {
+      const cls = [];
+      if (typeof rank === 'number' && rank <= 3) cls.push('rank-' + rank);
+      if (isMe) cls.push('me');
+      return '<tr' + (cls.length ? ' class="' + cls.join(' ') + '"' : '') + '>' +
+        '<td class="c-rank"><span class="rank">' + rank + '</span></td>' +
+        '<td class="c-name"><span class="name-cell"><span class="name-text">' + escapeHtml(r.name) + '</span>' +
+          (isMe ? '<span class="me-tag">עכשיו</span>' : '') + '</span></td>' +
+        '<td class="c-score">' + this._fmt(r.score) + '</td>' +
+        '<td class="c-level">' + escapeHtml(r.level) + '</td>' +
+        '</tr>';
+    };
+
+    let html = '';
+    all.slice(0, TOP).forEach((r, i) => { html += rowHtml(r, i + 1, i === meIdx); });
+
+    if (meIdx >= TOP) {
+      html += '<tr class="sep" aria-hidden="true"><td colspan="4">⋯</td></tr>' + rowHtml(all[meIdx], meIdx + 1, true);
+    } else if (meIdx === -1) {
+      if (all.length) html += '<tr class="sep" aria-hidden="true"><td colspan="4">⋯</td></tr>';
+      html += rowHtml({ name: Game.username || 'שחקן', score: Game.score, level: runLevel }, '–', true);
+    }
+
+    if (!html) html = '<tr class="empty"><td colspan="4">עדיין אין שיאים</td></tr>';
+    tbody.innerHTML = html;
+  },
+
+  showGameOver() {
+    this._el('go-level').textContent = Game.level;
+    this._el('go-score').textContent = this._fmt(Game.score);
+    this.fillScoresTable('go-scores', Game.level);
+    this._show('screen-gameover', 'go-restart-btn');
+  },
+
   showWin() {
-    document.getElementById('win-score').textContent = Game.score;
-    this.fillScoresTable('win-scores');
-    document.getElementById('screen-win').classList.remove('hidden');
+    // onWin() fires 1.8s after showLevelComplete() without calling hideOverlays(); close the banner here.
+    this._hide('screen-levelcomplete');
+    this._el('win-score').textContent = this._fmt(Game.score);
+    this.fillScoresTable('win-scores', CONFIG.MAX_LEVEL);
+    this._show('screen-win', 'win-restart-btn');
   }
 };
 
@@ -957,9 +2904,21 @@ const Game = {
     Enemies.spawn(this.level);
     PowerUps.reset();
     Render.rebuildAll();
+    FX.onLevelStart(this.level);
     this.state = 'PLAYING';
     UI.hideOverlays();
     UI.refreshHUD();
+  },
+
+  // A ball sitting on the trail at the exact frame the loop closes must still kill
+  // (checkDeaths runs only after Player.update, by which time the trail is already wall).
+  ballOnTrail() {
+    if (Player.shieldTimer > 0) return false;
+    for (const b of Enemies.balls) {
+      const c = Math.floor(b.x), r = Math.floor(b.y);
+      if (Grid.inBounds(c, r) && Grid.state[Grid.idx(c, r)] === TRAIL) return true;
+    }
+    return false;
   },
 
   closeLoop() {
@@ -977,6 +2936,16 @@ const Game = {
       const c = Math.floor(b.x), r = Math.floor(b.y);
       if (!Grid.inBounds(c, r)) continue;
       const i = Grid.idx(c, r);
+      if (Player.trailSet[i]) {
+        // Ball is on the just-solidified trail (only possible while shielded): keep the
+        // regions on both sides open instead of burying the ball inside a captured area.
+        for (const [nc, nr] of [[c - 1, r], [c + 1, r], [c, r - 1], [c, r + 1]]) {
+          if (!Grid.inBounds(nc, nr)) continue;
+          const ni = Grid.idx(nc, nr);
+          if (Grid.state[ni] === EMPTY && !Grid.visited[ni]) { Grid.visited[ni] = 1; queue.push(ni); }
+        }
+        continue;
+      }
       if (Grid.state[i] === EMPTY && !Grid.visited[i]) {
         Grid.visited[i] = 1;
         queue.push(i);
@@ -1004,14 +2973,28 @@ const Game = {
       }
     }
 
+    // Power-ups on newly captured cells would otherwise sit half-buried in the risen
+    // wall (mesh y≈0.9 vs wall height 1.0). Award them as a capture bonus instead.
+    for (let k = PowerUps.items.length - 1; k >= 0; k--) {
+      const it = PowerUps.items[k];
+      if (Grid.state[Grid.idx(it.col, it.row)] !== WALL) continue;
+      Render.spawnBurst(Render.cellWorldX(it.col), 1.4, Render.cellWorldZ(it.row), POWERUP_DEFS[it.type].color, 26, 3.5, 0.5);
+      FX.onPowerup(it);
+      PowerUps.applyEffect(it.type);
+      Render.removePowerupMesh(it);
+      PowerUps.items.splice(k, 1);
+    }
+
     Player.clearTrail();
     Player.onWall = true;
-    this.score += newlyClaimed * 10 * this.level;
+    const gained = newlyClaimed * 10 * this.level;
+    this.score += gained;
     UI.refreshHUD();
     Render.spawnBurst(
       Render.cellWorldX(Player.col), 1.0, Render.cellWorldZ(Player.row),
       0x5be0c4, Math.min(60, 14 + newlyClaimed / 12), 4, 0.55
     );
+    FX.onCapture(Player.col, Player.row, newlyClaimed, gained);
 
     if (Grid.fillPercent() >= CONFIG.FILL_TARGET) {
       this.onLevelComplete();
@@ -1034,6 +3017,7 @@ const Game = {
   },
 
   loseLife() {
+    FX.onDeath();
     Render.spawnBurst(Render.cellWorldX(Player.col), 1.2, Render.cellWorldZ(Player.row), 0xff5566, 32, 5, 0.5);
     this.lives--;
     for (const i of Player.trailPath) Grid.setState(i, EMPTY);
@@ -1048,13 +3032,18 @@ const Game = {
 
   onLevelComplete() {
     this.state = 'LEVEL_COMPLETE';
-    this.score += 50 * this.lives + 1000 * this.level;
+    const bonus = 50 * this.lives + 1000 * this.level;
+    this.score += bonus;
     UI.refreshHUD();
-    UI.showLevelComplete(this.level);
+    FX.onLevelComplete(bonus);
+    // Let the capture wave + celebration play on an unobstructed board before the
+    // (82% dark) overlay covers it.
+    const completedLevel = this.level;
+    setTimeout(() => UI.showLevelComplete(completedLevel), 1500);
     if (this.level >= CONFIG.MAX_LEVEL) {
-      setTimeout(() => this.onWin(), 1800);
+      setTimeout(() => this.onWin(), 3000);
     } else {
-      setTimeout(() => this.startLevel(this.level + 1), 1800);
+      setTimeout(() => this.startLevel(this.level + 1), 3000);
     }
   },
 
@@ -1067,6 +3056,7 @@ const Game = {
     Enemies.spawn(level);
     PowerUps.reset();
     Render.rebuildAll();
+    FX.onLevelStart(this.level);
     this.state = 'PLAYING';
     UI.hideOverlays();
     UI.refreshHUD();
@@ -1098,17 +3088,21 @@ const Game = {
 // ===== MAIN LOOP =====
 let lastTime = performance.now();
 function animate(now) {
-  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  // max(0): the first rAF timestamp can precede the performance.now() captured at load.
+  const dt = Math.max(0, Math.min((now - lastTime) / 1000, 0.05));
   lastTime = now;
+  const fxDt = Game.state === 'PAUSED' ? 0 : dt; // visual clock freezes with the game
+  FX.update(fxDt);
+  const gdt = dt * FX.timeScale;                  // hit-stop / slow-mo
 
   if (Game.state === 'PLAYING') {
-    Player.update(dt);
+    Player.update(gdt);
     if (Game.state === 'PLAYING') {
-      Enemies.update(dt);
+      Enemies.update(gdt);
       Game.checkDeaths();
     }
     if (Game.state === 'PLAYING') {
-      PowerUps.update(dt);
+      PowerUps.update(gdt);
       PowerUps.checkPickup();
     }
     UI.updateEffectsHUD();
@@ -1117,7 +3111,8 @@ function animate(now) {
   Render.flushDirty();
   Render.updatePlayerMesh();
   Render.updateEnemyMeshes();
-  Render.updateParticles(dt);
+  FX.lateUpdate(fxDt);
+  Render.updateParticles(fxDt * FX.timeScale);
   Render.render();
 
   requestAnimationFrame(animate);
@@ -1128,6 +3123,7 @@ function boot() {
   Grid.init();
   Player.init();
   Render.init();
+  FX.init();
   Input.init();
   UI.showStart();
 
@@ -1142,7 +3138,17 @@ function boot() {
     UI.showStart();
     Game.state = 'START';
   });
-  document.getElementById('pause-btn').addEventListener('click', () => Game.togglePause());
+  document.getElementById('pause-btn').addEventListener('click', (e) => {
+    e.currentTarget.blur(); // otherwise Enter would re-toggle pause during play
+    Game.togglePause();
+  });
+  document.getElementById('name-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.target.blur();
+      if (Game.state === 'START') Game.beginNewGame();
+    }
+  });
   document.getElementById('resume-btn').addEventListener('click', () => Game.togglePause());
   document.getElementById('pause-quit-btn').addEventListener('click', () => {
     UI.hideOverlays();
